@@ -89,21 +89,27 @@ echo "[6/9] Loading Forge credentials..."
 vault kv put secret/tinai/forge \
   FORGE_API_KEY="$FORGE_API_KEY"
 
+# --- NATS ---
+echo "[7/11] Loading NATS credentials..."
+vault kv put secret/tinai/nats \
+  NATS_SYSTEM_PASSWORD="$NATS_SYSTEM_PASSWORD" \
+  NATS_FUNCTIONS_PASSWORD="$NATS_FUNCTIONS_PASSWORD"
+
 # --- Woodpecker CI ---
-echo "[7/9] Loading Woodpecker credentials..."
+echo "[8/11] Loading Woodpecker credentials..."
 vault kv put secret/tinai/woodpecker \
   WOODPECKER_AGENT_SECRET="$WOODPECKER_AGENT_SECRET" \
   WOODPECKER_GITEA_CLIENT="$WOODPECKER_GITEA_CLIENT" \
   WOODPECKER_GITEA_SECRET="$WOODPECKER_GITEA_SECRET"
 
 # --- Grafana ---
-echo "[8/9] Loading Grafana credentials..."
+echo "[9/11] Loading Grafana credentials..."
 vault kv put secret/tinai/grafana \
   GRAFANA_ADMIN_USER="$GRAFANA_ADMIN_USER" \
   GRAFANA_ADMIN_PASSWORD="$GRAFANA_ADMIN_PASSWORD"
 
 # --- Stalwart Mail ---
-echo "[9/9] Loading Stalwart credentials..."
+echo "[10/11] Loading Stalwart credentials..."
 vault kv put secret/tinai/stalwart \
   STALWART_ADMIN_USER="$STALWART_ADMIN_USER" \
   STALWART_ADMIN_PASSWORD="$STALWART_ADMIN_PASSWORD"
