@@ -1,0 +1,42 @@
+# KEDA ScaledObject for tenant service/static Deployments — HTTP scale-to-zero
+#
+# NOTE: This file is a REFERENCE TEMPLATE only.
+# ScaledObjects are created programmatically by workloads.ts (deployToK8s) for
+# every service/static workload and deleted automatically on workload teardown.
+# Do NOT apply this file manually in production.
+#
+# To manually apply for debugging:
+#   sed 's/APP_NAME/my-app/g' scaledobject-apps.yaml | kubectl apply -f -
+#
+# Prerequisites:
+#   - KEDA >= 2.12 installed in the cluster
+#   - kube-prometheus-stack deployed in namespace: monitoring
+#   - nginx ingress controller (ingress-nginx) exposing nginx_ingress_controller_requests metric
+
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: APP_NAME-scaler
+  namespace: tinai-staging          # actual workload namespace (was wrongly tinai-apps)
+  labels:
+    tinai.cloud/workload: APP_NAME
+    tinai.cloud/component: autoscaler
+    tinai.cloud/scaler-type: app
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: APP_NAME
+  minReplicaCount: 0                # scale to zero when idle (saves cluster RAM/CPU)
+  maxReplicaCount: 10               # overridden per-tenant by plan tier at creation time
+  cooldownPeriod: 300               # seconds idle before scaling to zero
+  pollingInterval: 30               # how often KEDA polls prometheus (seconds)
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus-server.monitoring.svc.cluster.local
+        metricName: nginx_requests_APP_NAME
+        # nginx ingress controller request rate for this specific ingress resource
+        # was: traefik_service_requests_total (wrong — tinai uses nginx, not Traefik)
+        query: rate(nginx_ingress_controller_requests{ingress="APP_NAME",namespace="tinai-staging"}[2m])
+        threshold: "1"              # scale up when >= 1 req/s

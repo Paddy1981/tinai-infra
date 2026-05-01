@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tinai-instances-provisioner
+  namespace: tinai-system
+  labels:
+    app: tinai-instances-provisioner
+    tinai.cloud/managed-by: tinai-instances
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tinai-instances-provisioner
+  template:
+    metadata:
+      labels:
+        app: tinai-instances-provisioner
+        tinai.cloud/managed-by: tinai-instances
+    spec:
+      serviceAccountName: tinai-instances-sa
+      containers:
+        - name: provisioner
+          image: registry.tinai.cloud/tinai/instances-provisioner:latest
+          imagePullPolicy: Always
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: tinai-instances-db
+                  key: DATABASE_URL
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault

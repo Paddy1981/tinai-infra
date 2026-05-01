@@ -1,0 +1,33 @@
+Payment Received ✅
+==================
+
+Thank you for your payment!
+
+Receipt Details
+---------------
+Receipt Number: {{receiptNumber}}
+Payment Date: {{paymentDate}}
+Invoice Number: {{invoiceNumber}}
+Description: {{description}}
+Payment Method: {{paymentMethod}}
+
+Amount Paid: {{amountPaid}}
+
+Download Receipt: {{downloadReceiptUrl}}
+Go to Dashboard: {{dashboardUrl}}
+
+Your Current Plan
+-----------------
+Plan: {{planName}}
+Status: Active
+Next Billing Date: {{nextBillingDate}}
+Monthly Limit: {{planLimits}}
+
+Thank you for being a valued TinAI Cloud customer! 🙏
+
+Questions about your payment?
+Contact billing support: {{billingEmail}}
+
+---
+© 2025 TinAI Cloud. All rights reserved.
+Unsubscribe: {{unsubscribeUrl}}

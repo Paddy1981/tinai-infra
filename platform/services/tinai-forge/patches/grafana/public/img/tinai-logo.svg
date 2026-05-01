@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="tinai-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#06B6D4;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0891B2;stop-opacity:1" />
+    </linearGradient>
+    <filter id="tinai-shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Background square -->
+  <rect width="48" height="48" rx="8" fill="#0F172A"/>
+
+  <!-- Gradient border -->
+  <rect width="48" height="48" rx="8" fill="none" stroke="url(#tinai-gradient)" stroke-width="1.5" opacity="0.5"/>
+
+  <!-- Main T letter -->
+  <text x="50%" y="56%" dominant-baseline="middle" text-anchor="middle"
+        font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="28" font-style="normal"
+        fill="url(#tinai-gradient)" filter="url(#tinai-shadow)" letter-spacing="0.5">T</text>
+
+  <!-- Bottom accent bar -->
+  <rect x="8" y="36" width="32" height="3" rx="1.5" fill="url(#tinai-gradient)" filter="url(#tinai-shadow)"/>
+
+  <!-- Subtle corner accent -->
+  <circle cx="40" cy="8" r="2" fill="#06B6D4" opacity="0.6"/>
+</svg>

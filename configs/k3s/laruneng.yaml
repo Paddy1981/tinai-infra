@@ -1,0 +1,98 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tinai-apps
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: laruneng-com
+  namespace: tinai-apps
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: laruneng-com
+  template:
+    metadata:
+      labels:
+        app: laruneng-com
+    spec:
+      nodeSelector:
+        tinai.cloud/role: stateful
+      containers:
+        - name: laruneng-com
+          image: docker.io/laruneng/website:v1
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 3000
+              hostPort: 3030
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: laruneng-secrets
+                  key: DATABASE_URL
+            - name: DIRECT_URL
+              valueFrom:
+                secretKeyRef:
+                  name: laruneng-secrets
+                  key: DIRECT_URL
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: laruneng-com
+  namespace: tinai-apps
+spec:
+  selector:
+    app: laruneng-com
+  ports:
+    - port: 3000
+      targetPort: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: laruneng-com
+  namespace: tinai-apps
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: laruneng.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: laruneng-com
+                port:
+                  number: 3000
+    - host: www.laruneng.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: laruneng-com
+                port:
+                  number: 3000

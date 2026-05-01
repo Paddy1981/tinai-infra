@@ -1,0 +1,536 @@
+# k8s/ops-security.yaml
+# All operations and security services.
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ops
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ops-config
+  namespace: ops
+data:
+  PROMETHEUS_URL:   "http://prometheus-server.monitoring.svc.cluster.local:9090"
+  NATS_SERVERS:     "nats://nats.nats.svc.cluster.local:4222"
+  SMTP_HOST:        "stalwart.core.svc.cluster.local"
+  SMTP_PORT:        "587"
+  EMAIL_FROM:       "ops@tinai.cloud"
+  EMAIL_FROM_NAME:  "Tinai Ops"
+  HARBOR_URL:       "https://harbor.tinai.cloud"
+  HARBOR_USER:      "admin"
+  GITEA_URL:        "https://gitea.tinai.cloud"
+  GITEA_ORG:        "tinai-tenants"
+  VAULT_ADDR:       "http://vault.vault.svc.cluster.local:8200"
+  TENANT_NS_PREFIX: "tenant-"
+  BUILD_NAMESPACE:  "build-system"
+  BUILDER_IMAGE:    "harbor.tinai.cloud/tinai/nixpacks-builder:latest"
+  ROLLOUT_TIMEOUT_MS: "300000"
+  MONITOR_DURATION_MS: "300000"
+  POLL_INTERVAL_MS: "300000"
+  DLQ_ALERT_THRESHOLD: "10"
+  EGRESS_SPIKE_MULTIPLIER: "5"
+  AUTO_QUARANTINE:  "false"
+  BLOCK_ON_CRITICAL: "true"
+  LOG_LEVEL:        "info"
+  NODE_ENV:         "production"
+
+---
+# ── 1. Namespace Provisioner (Deployment) ─────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: namespace-provisioner
+  namespace: ops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: namespace-provisioner
+  template:
+    metadata:
+      labels:
+        app: namespace-provisioner
+    spec:
+      serviceAccountName: ops
+      securityContext: { runAsNonRoot: true, runAsUser: 1001 }
+      containers:
+        - name: namespace-provisioner
+          image: harbor.tinai.cloud/tinai/ops:latest
+          command: ["node", "namespace-provisioner/src/index.js"]
+          ports: [{ containerPort: 3400 }]
+          env: [{ name: PORT, value: "3400" }]
+          envFrom:
+            - configMapRef: { name: ops-config }
+            - secretRef:    { name: ops-secrets }
+          resources:
+            requests: { cpu: "50m",  memory: "64Mi"  }
+            limits:   { cpu: "200m", memory: "256Mi" }
+          livenessProbe:
+            httpGet: { path: /health, port: 3400 }
+            periodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata: { name: namespace-provisioner, namespace: ops }
+spec:
+  selector: { app: namespace-provisioner }
+  ports: [{ port: 3400, targetPort: 3400 }]
+
+---
+# ── 2. Build & Deploy Controller (Deployment) ─────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: build-deploy
+  namespace: ops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: build-deploy
+  template:
+    metadata:
+      labels:
+        app: build-deploy
+    spec:
+      serviceAccountName: ops
+      securityContext: { runAsNonRoot: true, runAsUser: 1001 }
+      containers:
+        - name: build-deploy
+          image: harbor.tinai.cloud/tinai/ops:latest
+          command: ["node", "build-deploy/src/index.js"]
+          ports: [{ containerPort: 3401 }]
+          env: [{ name: PORT, value: "3401" }]
+          envFrom:
+            - configMapRef: { name: ops-config }
+            - secretRef:    { name: ops-secrets }
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits:   { cpu: "500m", memory: "512Mi" }
+          livenessProbe:
+            httpGet: { path: /health, port: 3401 }
+            periodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata: { name: build-deploy, namespace: ops }
+spec:
+  selector: { app: build-deploy }
+  ports: [{ port: 3401, targetPort: 3401 }]
+
+---
+# ── 3. Rollback Controller (Deployment) ───────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rollback-controller
+  namespace: ops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rollback-controller
+  template:
+    metadata:
+      labels:
+        app: rollback-controller
+    spec:
+      serviceAccountName: ops
+      securityContext: { runAsNonRoot: true, runAsUser: 1001 }
+      containers:
+        - name: rollback-controller
+          image: harbor.tinai.cloud/tinai/ops:latest
+          command: ["node", "rollback-controller/src/index.js"]
+          ports: [{ containerPort: 3405 }]
+          env: [{ name: PORT, value: "3405" }]
+          envFrom:
+            - configMapRef: { name: ops-config }
+            - secretRef:    { name: ops-secrets }
+          resources:
+            requests: { cpu: "50m", memory: "64Mi" }
+            limits:   { cpu: "200m", memory: "256Mi" }
+          livenessProbe:
+            httpGet: { path: /health, port: 3405 }
+            periodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata: { name: rollback-controller, namespace: ops }
+spec:
+  selector: { app: rollback-controller }
+  ports: [{ port: 3405, targetPort: 3405 }]
+
+---
+# ── 4. HPA Scaler (Deployment + daily reconcile CronJob) ──────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hpa-scaler
+  namespace: ops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hpa-scaler
+  template:
+    metadata:
+      labels:
+        app: hpa-scaler
+    spec:
+      serviceAccountName: ops
+      securityContext: { runAsNonRoot: true, runAsUser: 1001 }
+      containers:
+        - name: hpa-scaler
+          image: harbor.tinai.cloud/tinai/ops:latest
+          command: ["node", "hpa-scaler/src/index.js"]
+          ports: [{ containerPort: 3404 }]
+          env: [{ name: PORT, value: "3404" }]
+          envFrom:
+            - configMapRef: { name: ops-config }
+            - secretRef:    { name: ops-secrets }
+          resources:
+            requests: { cpu: "50m", memory: "64Mi" }
+            limits:   { cpu: "200m", memory: "256Mi" }
+          livenessProbe:
+            httpGet: { path: /health, port: 3404 }
+            periodSeconds: 30
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata: { name: hpa-reconcile, namespace: ops }
+spec:
+  schedule: "0 6 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: ops
+          restartPolicy: OnFailure
+          containers:
+            - name: hpa-reconcile
+              image: harbor.tinai.cloud/tinai/ops:latest
+              command: ["node", "hpa-scaler/src/index.js"]
+              env: [{ name: RUN_MODE, value: reconcile }]
+              envFrom:
+                - configMapRef: { name: ops-config }
+                - secretRef:    { name: ops-secrets }
+              resources:
+                requests: { cpu: "50m", memory: "64Mi" }
+                limits:   { cpu: "200m", memory: "128Mi" }
+
+---
+# ── 5. Incident Alerting (Deployment) ─────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: incident-alerting
+  namespace: ops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: incident-alerting
+  template:
+    metadata:
+      labels:
+        app: incident-alerting
+    spec:
+      serviceAccountName: ops
+      securityContext: { runAsNonRoot: true, runAsUser: 1001 }
+      containers:
+        - name: incident-alerting
+          image: harbor.tinai.cloud/tinai/ops:latest
+          command: ["node", "incident-alerting/src/index.js"]
+          ports: [{ containerPort: 3402 }]
+          env: [{ name: PORT, value: "3402" }]
+          envFrom:
+            - configMapRef: { name: ops-config }
+            - secretRef:    { name: ops-secrets }
+          resources:
+            requests: { cpu: "50m", memory: "64Mi" }
+            limits:   { cpu: "200m", memory: "256Mi" }
+          livenessProbe:
+            httpGet: { path: /health, port: 3402 }
+            periodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata: { name: incident-alerting, namespace: ops }
+spec:
+  selector: { app: incident-alerting }
+  ports: [{ port: 3402, targetPort: 3402 }]
+
+---
+# ── 6. DLQ Monitor (Deployment) ───────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dlq-monitor
+  namespace: ops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dlq-monitor
+  template:
+    metadata:
+      labels:
+        app: dlq-monitor
+    spec:
+      serviceAccountName: ops
+      securityContext: { runAsNonRoot: true, runAsUser: 1001 }
+      containers:
+        - name: dlq-monitor
+          image: harbor.tinai.cloud/tinai/ops:latest
+          command: ["node", "dlq-monitor/src/index.js"]
+          ports: [{ containerPort: 3403 }]
+          env: [{ name: PORT, value: "3403" }]
+          envFrom:
+            - configMapRef: { name: ops-config }
+            - secretRef:    { name: ops-secrets }
+          resources:
+            requests: { cpu: "50m", memory: "64Mi" }
+            limits:   { cpu: "200m", memory: "256Mi" }
+          livenessProbe:
+            httpGet: { path: /health, port: 3403 }
+            periodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata: { name: dlq-monitor, namespace: ops }
+spec:
+  selector: { app: dlq-monitor }
+  ports: [{ port: 3403, targetPort: 3403 }]
+
+---
+# ── 7. Onboarding Sequence (Deployment — NATS subscriber) ─────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: onboarding-sequence
+  namespace: ops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: onboarding-sequence
+  template:
+    metadata:
+      labels:
+        app: onboarding-sequence
+    spec:
+      serviceAccountName: ops
+      securityContext: { runAsNonRoot: true, runAsUser: 1001 }
+      containers:
+        - name: onboarding-sequence
+          image: harbor.tinai.cloud/tinai/ops:latest
+          command: ["node", "onboarding-sequence/src/index.js"]
+          envFrom:
+            - configMapRef: { name: ops-config }
+            - secretRef:    { name: ops-secrets }
+          resources:
+            requests: { cpu: "50m", memory: "64Mi" }
+            limits:   { cpu: "200m", memory: "256Mi" }
+
+---
+# ── Security: CVE Scanner (CronJob weekly) ────────────────────────────────────
+apiVersion: batch/v1
+kind: CronJob
+metadata: { name: cve-scanner, namespace: ops }
+spec:
+  schedule: "0 3 * * 0"
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: ops
+          restartPolicy: OnFailure
+          containers:
+            - name: cve-scanner
+              image: harbor.tinai.cloud/tinai/ops:latest
+              command: ["node", "security/cve-scanner/index.js"]
+              envFrom:
+                - configMapRef: { name: ops-config }
+                - secretRef:    { name: ops-secrets }
+              resources:
+                requests: { cpu: "200m", memory: "256Mi" }
+                limits:   { cpu: "1000m", memory: "512Mi" }
+
+---
+# ── Security: Network Policy Enforcer (CronJob daily) ────────────────────────
+apiVersion: batch/v1
+kind: CronJob
+metadata: { name: network-policy-enforcer, namespace: ops }
+spec:
+  schedule: "30 5 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: ops
+          restartPolicy: OnFailure
+          containers:
+            - name: network-policy
+              image: harbor.tinai.cloud/tinai/ops:latest
+              command: ["node", "security/network-policy/index.js"]
+              envFrom:
+                - configMapRef: { name: ops-config }
+                - secretRef:    { name: ops-secrets }
+              resources:
+                requests: { cpu: "50m", memory: "64Mi" }
+                limits:   { cpu: "200m", memory: "128Mi" }
+
+---
+# ── Security: Egress Anomaly Monitor (Deployment — always-on) ─────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: egress-anomaly
+  namespace: ops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: egress-anomaly
+  template:
+    metadata:
+      labels:
+        app: egress-anomaly
+    spec:
+      serviceAccountName: ops
+      securityContext: { runAsNonRoot: true, runAsUser: 1001 }
+      containers:
+        - name: egress-anomaly
+          image: harbor.tinai.cloud/tinai/ops:latest
+          command: ["node", "security/egress-anomaly/index.js"]
+          ports: [{ containerPort: 3500 }]
+          env: [{ name: PORT, value: "3500" }]
+          envFrom:
+            - configMapRef: { name: ops-config }
+            - secretRef:    { name: ops-secrets }
+          resources:
+            requests: { cpu: "50m", memory: "64Mi" }
+            limits:   { cpu: "200m", memory: "256Mi" }
+          livenessProbe:
+            httpGet: { path: /health, port: 3500 }
+            periodSeconds: 60
+
+---
+# ── Security: Audit Log Export (CronJob daily) ────────────────────────────────
+apiVersion: batch/v1
+kind: CronJob
+metadata: { name: audit-log-export, namespace: ops }
+spec:
+  schedule: "0 1 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: ops
+          restartPolicy: OnFailure
+          volumes:
+            - name: audit-logs
+              hostPath: { path: /var/log/kubernetes }
+          containers:
+            - name: audit-export
+              image: harbor.tinai.cloud/tinai/ops:latest
+              command: ["node", "security/audit-log-export/index.js"]
+              env:
+                - { name: RUN_MODE,            value: audit-export }
+                - { name: K8S_AUDIT_LOG_PATH,  value: /var/log/kubernetes/audit.log }
+              envFrom:
+                - configMapRef: { name: ops-config }
+                - secretRef:    { name: ops-secrets }
+              volumeMounts:
+                - name: audit-logs
+                  mountPath: /var/log/kubernetes
+                  readOnly: true
+              resources:
+                requests: { cpu: "50m", memory: "128Mi" }
+                limits:   { cpu: "200m", memory: "256Mi" }
+
+---
+# ── Ingress ────────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ops-api
+  namespace: ops
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  tls:
+    - hosts: ["api.tinai.cloud"]
+      secretName: tinai-api-tls
+  rules:
+    - host: api.tinai.cloud
+      http:
+        paths:
+          - { path: /provision,          pathType: Prefix, backend: { service: { name: namespace-provisioner, port: { number: 3400 } } } }
+          - { path: /webhooks/gitea,     pathType: Prefix, backend: { service: { name: build-deploy,          port: { number: 3401 } } } }
+          - { path: /webhook/alertmanager, pathType: Prefix, backend: { service: { name: incident-alerting,   port: { number: 3402 } } } }
+          - { path: /dlq,                pathType: Prefix, backend: { service: { name: dlq-monitor,           port: { number: 3403 } } } }
+          - { path: /rollback,           pathType: Prefix, backend: { service: { name: rollback-controller,   port: { number: 3405 } } } }
+          - { path: /scaling,            pathType: Prefix, backend: { service: { name: hpa-scaler,            port: { number: 3404 } } } }
+
+---
+# ── RBAC ──────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: ops, namespace: ops }
+automountServiceAccountToken: true
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: { name: ops }
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "pods", "services", "configmaps", "serviceaccounts", "persistentvolumeclaims", "limitranges", "resourcequotas"]
+    verbs: ["get", "list", "create", "patch", "update", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "create", "patch", "update"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "create", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies", "ingresses"]
+    verbs: ["get", "list", "create", "patch", "update"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
+    verbs: ["get", "list", "create", "patch", "update"]
+  - apiGroups: ["keda.sh"]
+    resources: ["scaledobjects"]
+    verbs: ["get", "list", "create", "patch", "update"]
+  - apiGroups: ["cert-manager.io"]
+    resources: ["certificates"]
+    verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: { name: ops }
+subjects:
+  - { kind: ServiceAccount, name: ops, namespace: ops }
+roleRef:
+  kind: ClusterRole
+  name: ops
+  apiGroup: rbac.authorization.k8s.io

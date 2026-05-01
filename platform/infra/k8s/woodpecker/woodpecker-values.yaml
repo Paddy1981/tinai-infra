@@ -1,0 +1,54 @@
+# Woodpecker CI — Forgejo-native CI for tenant repositories
+# helm install woodpecker woodpecker/woodpecker -f woodpecker-values.yaml -n woodpecker --create-namespace
+server:
+  enabled: true
+  replicaCount: 1
+
+  env:
+    WOODPECKER_OPEN: "false"          # invite-only; Forgejo OAuth controls access
+    WOODPECKER_HOST: "https://ci.tinai.cloud"
+    WOODPECKER_GITEA: "true"
+    WOODPECKER_GITEA_URL: "https://forgejo.tinai.cloud"
+    # Secrets injected via ESO:
+    # WOODPECKER_GITEA_CLIENT (OAuth App client ID)
+    # WOODPECKER_GITEA_SECRET (OAuth App client secret)
+    # WOODPECKER_AGENT_SECRET (shared secret for agent<->server auth)
+    WOODPECKER_DATABASE_DRIVER: "postgres"
+    # WOODPECKER_DATABASE_DATASOURCE injected via ESO
+    WOODPECKER_PROMETHEUS_AUTH_TOKEN: ""  # set via secret
+    WOODPECKER_LIMIT_REPOS: "0"       # unlimited repos per user
+    WOODPECKER_DEFAULT_PIPELINE_TIMEOUT: "60"
+    WOODPECKER_ADMIN: "tinai-admin"   # Forgejo OAuth username granted admin
+
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: local-path
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+agent:
+  enabled: true
+  replicaCount: 2
+
+  env:
+    WOODPECKER_SERVER: "woodpecker-server.woodpecker.svc.cluster.local:9000"
+    WOODPECKER_MAX_WORKFLOWS: "4"     # 4 parallel pipelines per agent
+    WOODPECKER_BACKEND: "kubernetes"  # run pipeline steps as K8s pods
+    WOODPECKER_BACKEND_K8S_NAMESPACE: "tinai-build"
+    WOODPECKER_BACKEND_K8S_STORAGE_CLASS: "local-path"
+    WOODPECKER_BACKEND_K8S_STORAGE_RWX: "false"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi

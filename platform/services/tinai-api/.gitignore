@@ -1,0 +1,5 @@
+# Kubernetes secret manifests — never commit real credentials
+k8s/secret-*.yaml
+node_modules/
+.env
+.env.local

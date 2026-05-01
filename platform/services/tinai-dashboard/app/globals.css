@@ -1,0 +1,165 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  @keyframes spin-slow {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .animate-spin-slow {
+    animation: spin-slow 8s linear infinite;
+  }
+}
+
+:root, [data-theme="dark"] {
+  --t-bg:         #07070F;
+  --t-surface:    #0E0E1C;
+  --t-surface-2:  #14142A;
+  --t-text:       #EDE9E1;
+  --t-text-muted: #8C89A4;
+  --t-text-dim:   #4A4760;
+  --t-border:     #2A2844;
+}
+
+[data-theme="light"] {
+  --t-bg:         #F9F7F4;
+  --t-surface:    #FFFFFF;
+  --t-surface-2:  #F3F0EB;
+  --t-text:       #1A1818;
+  --t-text-muted: #6B6880;
+  --t-text-dim:   #9896A8;
+  --t-border:     #E4E0D8;
+}
+
+@layer base {
+  body {
+    font-family: 'Outfit', sans-serif;
+    background-color: var(--t-bg);
+    color: var(--t-text);
+  }
+}
+
+/* Shell-aware classes — used by Sidebar, AppShell, and dialog boxes */
+.t-sidebar    { background-color: var(--t-surface); border-color: var(--t-border); }
+.t-header     { border-color: var(--t-border); }
+.t-card       { background-color: var(--t-surface); border-color: var(--t-border); }
+.t-card-inner { background-color: var(--t-surface-2); }
+.t-text       { color: var(--t-text); }
+.t-text-muted { color: var(--t-text-muted); }
+.t-text-dim   { color: var(--t-text-dim); }
+.t-border     { border-color: var(--t-border); }
+.t-input      { background-color: var(--t-surface-2); border-color: var(--t-border); color: var(--t-text); }
+
+/* ─── Light-mode overrides for Tailwind slate classes ──────────────────────
+   All page content (billing, workloads, compliance, dialogs etc) uses
+   bg-slate-* / border-slate-* / text-slate-* classes from Tailwind's palette.
+   Rather than touching 48 files, we remap the entire slate scale here.
+   ───────────────────────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  /* Backgrounds */
+  --tw-bg-slate-950: #F5F3F0;
+  --tw-bg-slate-900: #FFFFFF;
+  --tw-bg-slate-800: #F3F0EB;
+  --tw-bg-slate-700: #E8E4DC;
+  --tw-bg-slate-600: #D9D4CA;
+}
+
+[data-theme="light"] .bg-slate-950   { background-color: #F5F3F0 !important; }
+[data-theme="light"] .bg-slate-900   { background-color: #FFFFFF !important; }
+[data-theme="light"] .bg-slate-900\/50 { background-color: rgba(255,255,255,0.5) !important; }
+[data-theme="light"] .bg-slate-900\/60 { background-color: rgba(255,255,255,0.6) !important; }
+[data-theme="light"] .bg-slate-900\/80 { background-color: rgba(255,255,255,0.8) !important; }
+[data-theme="light"] .bg-slate-800   { background-color: #F3F0EB !important; }
+[data-theme="light"] .bg-slate-800\/40 { background-color: rgba(243,240,235,0.4) !important; }
+[data-theme="light"] .bg-slate-800\/50 { background-color: rgba(243,240,235,0.5) !important; }
+[data-theme="light"] .bg-slate-800\/60 { background-color: rgba(243,240,235,0.6) !important; }
+[data-theme="light"] .bg-slate-700   { background-color: #E8E4DC !important; }
+[data-theme="light"] .bg-slate-700\/60 { background-color: rgba(232,228,220,0.6) !important; }
+[data-theme="light"] .bg-slate-600   { background-color: #D9D4CA !important; }
+[data-theme="light"] .bg-slate-500\/10 { background-color: rgba(180,175,165,0.1) !important; }
+
+/* Borders */
+[data-theme="light"] .border-slate-800    { border-color: #E4E0D8 !important; }
+[data-theme="light"] .border-slate-800\/50 { border-color: rgba(228,224,216,0.5) !important; }
+[data-theme="light"] .border-slate-700    { border-color: #D4CFC6 !important; }
+[data-theme="light"] .border-slate-700\/50 { border-color: rgba(212,207,198,0.5) !important; }
+[data-theme="light"] .border-slate-600    { border-color: #C4BEB4 !important; }
+[data-theme="light"] .border-slate-500    { border-color: #B4AEA4 !important; }
+[data-theme="light"] .border-slate-500\/30 { border-color: rgba(180,174,164,0.3) !important; }
+[data-theme="light"] .border-slate-400    { border-color: #9C9590 !important; }
+
+/* Dividers */
+[data-theme="light"] .divide-slate-800 > * + *   { border-color: #E4E0D8 !important; }
+[data-theme="light"] .divide-slate-800\/50 > * + * { border-color: rgba(228,224,216,0.5) !important; }
+
+/* Text */
+[data-theme="light"] .text-slate-100 { color: #1A1818 !important; }
+[data-theme="light"] .text-slate-200 { color: #2A2826 !important; }
+[data-theme="light"] .text-slate-300 { color: #3A3836 !important; }
+[data-theme="light"] .text-slate-400 { color: #6B6880 !important; }
+[data-theme="light"] .text-slate-500 { color: #8B8898 !important; }
+[data-theme="light"] .text-slate-600 { color: #9896A8 !important; }
+[data-theme="light"] .text-slate-700 { color: #6B6880 !important; }
+
+/* Inputs / forms */
+[data-theme="light"] input.bg-transparent   { color: #1A1818 !important; }
+[data-theme="light"] textarea.bg-transparent { color: #1A1818 !important; }
+[data-theme="light"] select.bg-transparent  { color: #1A1818 !important; }
+[data-theme="light"] input::placeholder  { color: #9896A8 !important; }
+[data-theme="light"] textarea::placeholder { color: #9896A8 !important; }
+
+/* Hover states */
+[data-theme="light"] .hover\:bg-slate-800\/60:hover { background-color: rgba(243,240,235,0.6) !important; }
+[data-theme="light"] .hover\:bg-slate-700:hover     { background-color: #E8E4DC !important; }
+[data-theme="light"] .hover\:bg-slate-600:hover     { background-color: #D9D4CA !important; }
+[data-theme="light"] .hover\:border-slate-600:hover { border-color: #C4BEB4 !important; }
+[data-theme="light"] .hover\:text-slate-300:hover   { color: #3A3836 !important; }
+
+/* Custom hex overrides used in non-shell pages */
+[data-theme="light"] .bg-\[\#07070F\]   { background-color: #F9F7F4 !important; }
+[data-theme="light"] .bg-\[\#0E0E1C\]   { background-color: #FFFFFF !important; }
+[data-theme="light"] .bg-\[\#14142A\]   { background-color: #F3F0EB !important; }
+[data-theme="light"] .border-\[\#2A2844\] { border-color: #E4E0D8 !important; }
+[data-theme="light"] .text-\[\#EDE9E1\]  { color: #1A1818 !important; }
+[data-theme="light"] .text-\[\#8C89A4\]  { color: #6B6880 !important; }
+[data-theme="light"] .text-\[\#4A4760\]  { color: #9896A8 !important; }
+[data-theme="light"] .bg-\[\#14142A\]\/80 { background-color: rgba(243,240,235,0.8) !important; }
+
+@layer utilities {
+  .font-headline { font-family: 'Outfit', sans-serif; }
+  .font-mono     { font-family: 'JetBrains Mono', monospace; }
+
+  .tech-grid {
+    background-size: 40px 40px;
+    background-image:
+      linear-gradient(to right,  rgba(249,115,22,0.04) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(249,115,22,0.04) 1px, transparent 1px);
+  }
+
+  .glass-nav {
+    background: rgba(7,7,15,0.6);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .glow-active {
+    box-shadow: 0 0 20px 2px rgba(249,115,22,0.12);
+  }
+}
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  font-size: 20px;
+  line-height: 1;
+  vertical-align: middle;
+  display: inline-block;
+}

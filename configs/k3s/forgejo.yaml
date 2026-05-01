@@ -1,0 +1,127 @@
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: forgejo-pv
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-storage
+  local:
+    path: /data/forgejo
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: forgejo-pvc
+  namespace: tinai-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-storage
+  resources:
+    requests:
+      storage: 20Gi
+  volumeName: forgejo-pv
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: forgejo
+  namespace: tinai-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: forgejo
+  template:
+    metadata:
+      labels:
+        app: forgejo
+    spec:
+      nodeSelector:
+        tinai.cloud/role: stateful
+      containers:
+        - name: forgejo
+          image: codeberg.org/forgejo/forgejo:9
+          ports:
+            - containerPort: 3000
+              hostPort: 3010
+              name: http
+            - containerPort: 22
+              hostPort: 2222
+              name: ssh
+          env:
+            - name: USER_UID
+              value: "1000"
+            - name: USER_GID
+              value: "1000"
+            - name: FORGEJO__database__DB_TYPE
+              value: postgres
+            - name: FORGEJO__database__HOST
+              value: postgres.tinai-system.svc.cluster.local:5432
+            - name: FORGEJO__database__NAME
+              value: forgejo
+            - name: FORGEJO__database__USER
+              value: tinai
+            - name: FORGEJO__database__PASSWD
+              valueFrom:
+                secretKeyRef:
+                  name: tinai-db-credentials
+                  key: POSTGRES_PASSWORD
+            - name: FORGEJO__server__ROOT_URL
+              value: https://git.tinai.cloud
+            - name: FORGEJO__server__SSH_DOMAIN
+              value: git.tinai.cloud
+            - name: FORGEJO__server__SSH_PORT
+              value: "2222"
+          volumeMounts:
+            - name: forgejo-data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 60
+            periodSeconds: 30
+      volumes:
+        - name: forgejo-data
+          persistentVolumeClaim:
+            claimName: forgejo-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: forgejo
+  namespace: tinai-system
+spec:
+  selector:
+    app: forgejo
+  ports:
+    - port: 3000
+      targetPort: 3000
+      name: http
+    - port: 22
+      targetPort: 22
+      name: ssh

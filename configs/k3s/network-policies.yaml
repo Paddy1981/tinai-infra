@@ -1,0 +1,340 @@
+# Network Policies for Tinai PaaS multi-tenant isolation
+#
+# NOTE: K3s with flannel CNI does NOT enforce NetworkPolicies.
+# These manifests are prepared for when the cluster is upgraded to
+# Calico or Cilium CNI. Until then, they will exist in the API server
+# but have no runtime effect. Flannel ignores them safely.
+#
+# To enable enforcement, replace flannel with Calico or Cilium:
+#   - Calico: https://docs.tigera.io/calico/latest/getting-started/kubernetes/k3s/
+#   - Cilium: https://docs.cilium.io/en/stable/installation/k8s-install-k3s/
+
+# =============================================================================
+# tinai-apps namespace policies
+# =============================================================================
+
+---
+# 1. Default deny all ingress in tinai-apps
+# Blocks all incoming traffic to tenant pods unless explicitly allowed
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: tinai-apps
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+# 2. Default deny all egress in tinai-apps
+# Blocks all outgoing traffic from tenant pods unless explicitly allowed
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: tinai-apps
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+
+---
+# 3. Allow ingress from Traefik (kube-system) to tenant apps
+# Traefik needs to reach app pods to serve HTTP traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-traefik
+  namespace: tinai-apps
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+
+---
+# 4. Allow egress to DNS (kube-dns in kube-system, port 53 TCP+UDP)
+# All pods need DNS resolution to function
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-dns
+  namespace: tinai-apps
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# 5. Allow egress to tinai-system services (postgres, redis, minio)
+# Tenant apps need to reach backend services on their specific ports only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-tinai-system
+  namespace: tinai-apps
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # PostgreSQL
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: tinai-system
+          podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Redis
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: tinai-system
+          podSelector:
+            matchLabels:
+              app: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    # MinIO (API + Console)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: tinai-system
+          podSelector:
+            matchLabels:
+              app: minio
+      ports:
+        - protocol: TCP
+          port: 9000
+        - protocol: TCP
+          port: 9001
+
+# =============================================================================
+# tinai-system namespace policies
+# =============================================================================
+
+---
+# 6. Default deny all ingress in tinai-system
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: tinai-system
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+# 7. Allow ingress from tinai-apps on service ports only
+# Tenant apps need to reach postgres, redis, and minio
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-tinai-apps
+  namespace: tinai-system
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    # PostgreSQL from tenant apps
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: tinai-apps
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+        - protocol: TCP
+          port: 9000
+        - protocol: TCP
+          port: 9001
+        - protocol: TCP
+          port: 3000
+        - protocol: TCP
+          port: 3001
+        - protocol: TCP
+          port: 3002
+        - protocol: TCP
+          port: 3004
+        - protocol: TCP
+          port: 3005
+        - protocol: TCP
+          port: 3006
+        - protocol: TCP
+          port: 8090
+
+---
+# 8. Allow ingress from Traefik to tinai-system services
+# Traefik routes external traffic to dashboard, API, auth, etc.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-traefik
+  namespace: tinai-system
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+
+---
+# 9. Allow ingress from monitoring namespace (Prometheus scraping)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-monitoring
+  namespace: tinai-system
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+
+---
+# 10. Allow intra-namespace communication in tinai-system
+# Platform services need to talk to each other (e.g., API -> postgres)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-namespace
+  namespace: tinai-system
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}
+
+# =============================================================================
+# monitoring namespace policies
+# =============================================================================
+
+---
+# 11. Default deny all ingress in monitoring
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: monitoring
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+# 12. Allow ingress from Traefik to Grafana
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-traefik
+  namespace: monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app: grafana
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+
+---
+# 13. Allow egress from Prometheus to tinai-system for scraping
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-prometheus-to-system
+  namespace: monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app: prometheus
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: tinai-system
+
+---
+# 14. Allow DNS egress from monitoring namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-dns
+  namespace: monitoring
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# 15. Allow intra-namespace communication in monitoring
+# Grafana needs to query Prometheus, etc.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-namespace
+  namespace: monitoring
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}

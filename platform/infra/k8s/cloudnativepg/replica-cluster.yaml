@@ -1,0 +1,51 @@
+# Cross-region read replica cluster for tinai-pg
+# Apply this manifest in QA (qa region) and AE (ae region) clusters only.
+# The replica streams WAL from the IN-region primary via Barman Cloud object store.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: tinai-pg-replica
+  namespace: tinai-system
+  annotations:
+    tinai.cloud/purpose: "cross-region read replica — apply in QA/AE clusters only"
+spec:
+  instances: 1
+
+  imageName: ghcr.io/cloudnative-pg/postgresql:16
+
+  # Replica cluster: streams WAL from primary region via Barman Cloud
+  replica:
+    enabled: true
+    source: tinai-pg-primary
+
+  externalClusters:
+    - name: tinai-pg-primary
+      barmanObjectStore:
+        destinationPath: s3://tinai-pg-backup-in/   # IN region is primary
+        endpointURL: https://minio.tinai.cloud
+        s3Credentials:
+          accessKeyId:
+            name: pg-backup-minio-creds
+            key: ACCESS_KEY_ID
+          secretAccessKey:
+            name: pg-backup-minio-creds
+            key: SECRET_ACCESS_KEY
+
+  bootstrap:
+    recovery:
+      source: tinai-pg-primary
+
+  storage:
+    size: 20Gi
+    storageClass: local-path
+
+  monitoring:
+    enablePodMonitor: true
+
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "1"

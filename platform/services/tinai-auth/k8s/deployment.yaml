@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tinai-auth
+  namespace: tinai-system
+  labels:
+    tinai.cloud/component: auth
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      tinai.cloud/component: auth
+  template:
+    metadata:
+      labels:
+        tinai.cloud/component: auth
+    spec:
+      imagePullSecrets:
+        - name: e2e-registry-secret
+      containers:
+        - name: tinai-auth
+          image: registry.e2enetworks.net/tinai/tinai-auth:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3002
+          env:
+            - name: PORT
+              value: "3002"
+            - name: ALLOWED_ORIGINS
+              value: "https://dashboard.tinai.cloud,https://tinai.cloud,https://app.tinai.cloud"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: tinai-api-secrets
+                  key: database-url
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: tinai-api-secrets
+                  key: jwt-secret
+            - name: MSG91_AUTH_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: tinai-sms-secrets
+                  key: MSG91_AUTH_KEY
+                  optional: true
+            - name: MSG91_TEMPLATE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: tinai-sms-secrets
+                  key: MSG91_TEMPLATE_ID
+                  optional: true
+            - name: MSG91_SENDER_ID
+              value: "TINAI"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 3002
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 3002
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tinai-auth
+  namespace: tinai-system
+spec:
+  selector:
+    tinai.cloud/component: auth
+  ports:
+    - port: 3002
+      targetPort: 3002
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tinai-auth
+  namespace: tinai-system
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: auth.tinai.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tinai-auth
+                port:
+                  number: 3002

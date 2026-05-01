@@ -1,0 +1,97 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: stalwart-data
+  namespace: core
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stalwart
+  namespace: core
+  labels:
+    app: stalwart
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: stalwart
+  template:
+    metadata:
+      labels:
+        app: stalwart
+    spec:
+      containers:
+        - name: stalwart
+          image: stalwartlabs/stalwart:latest
+          ports:
+            - name: smtp-in
+              containerPort: 25
+              hostPort: 25
+            - name: smtp
+              containerPort: 587
+              hostPort: 587
+            - name: imap
+              containerPort: 993
+              hostPort: 993
+            - name: https
+              containerPort: 443
+              hostPort: 4443
+            - name: http
+              containerPort: 8080
+              hostPort: 8080
+          env:
+            - name: STALWART_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: stalwart-secrets
+                  key: ADMIN_PASSWORD
+          volumeMounts:
+            - name: data
+              mountPath: /opt/stalwart
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            tcpSocket:
+              port: 587
+            initialDelaySeconds: 15
+            periodSeconds: 30
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: stalwart-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stalwart
+  namespace: core
+spec:
+  selector:
+    app: stalwart
+  ports:
+    - name: smtp
+      port: 587
+      targetPort: 587
+    - name: imap
+      port: 993
+      targetPort: 993
+    - name: https
+      port: 443
+      targetPort: 443
+    - name: http
+      port: 8080
+      targetPort: 8080

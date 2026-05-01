@@ -1,0 +1,803 @@
+openapi: "3.1.0"
+info:
+  title: Tinai Agri API
+  version: "1.0.0"
+  description: |
+    Sovereign Indian agriculture intelligence API. Zero competition in the Indian market.
+    Combines real-time mandi prices, hyperlocal weather, government scheme eligibility,
+    AI-powered crop disease diagnosis, and unified farming advisory in a single API.
+
+    All responses support 22 Indian languages via the `Accept-Language` header.
+    All coordinates use WGS84. All currency is Indian Rupees (INR, paise as integer).
+
+    **Authentication**: API key in `X-Tinai-Key: tn_prod_agri_{32hex}` header.
+    Rate limits: Free=100/day, Builder=10,000/day, Scale=unlimited.
+
+    **Bhashini integration**: Pass `Accept-Language: hi` (or any BCP-47 code for
+    Indian languages) and all text fields are auto-translated using BHASHINI.
+  contact:
+    name: Tinai Engineering
+    url: https://dev.tinai.cloud
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.tinai.cloud/agri/v1
+    description: Production
+  - url: https://api-sandbox.tinai.cloud/agri/v1
+    description: Sandbox (uses simulated data, no AgriStack access required)
+
+tags:
+  - name: mandi
+    description: Real-time market prices from AgMarkNet / eNAM
+  - name: weather
+    description: Hyperlocal weather forecasts
+  - name: schemes
+    description: Government scheme eligibility (PMFBY, PM-KISAN, etc.)
+  - name: diagnose
+    description: AI crop disease diagnosis from images
+  - name: advisory
+    description: Unified farming advisory combining all data sources
+
+paths:
+  /mandi/prices:
+    get:
+      operationId: getMandiPrices
+      summary: Get real-time mandi prices
+      description: |
+        Returns live and recent mandi prices for a crop within a radius.
+        Data sourced from AgMarkNet API (3-6 hour delay) and eNAM live prices.
+        Fan-out: queries up to 20 nearby mandis concurrently with 5s timeout.
+      tags: [mandi]
+      parameters:
+        - name: crop
+          in: query
+          required: true
+          description: Crop name in English or transliterated. Also accepts local names.
+          schema:
+            type: string
+            example: "wheat"
+        - name: lat
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+            minimum: 6.0
+            maximum: 38.0
+            example: 28.6139
+        - name: lng
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+            minimum: 68.0
+            maximum: 98.0
+            example: 77.2090
+        - name: radius_km
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 10
+            maximum: 500
+            default: 100
+        - name: variety
+          in: query
+          required: false
+          description: Crop variety filter (e.g. "Lokwan" for wheat)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Mandi prices found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MandiPriceResponse"
+        "404":
+          description: No mandis found for crop in radius
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /weather/forecast:
+    get:
+      operationId: getWeatherForecast
+      summary: Get hyperlocal 7-day weather forecast
+      description: |
+        Returns 7-day hourly weather forecast for a farm location.
+        Includes agriculture-specific parameters: soil moisture index, evapotranspiration,
+        pest risk index, frost risk, optimal spray windows.
+        Sourced from IMD grid data fused with satellite soil moisture (ISRO MOSDAC).
+      tags: [weather]
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+        - name: lng
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+        - name: crop
+          in: query
+          required: false
+          description: If provided, includes crop-specific risk indices
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Weather forecast
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeatherForecastResponse"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /schemes/eligibility:
+    post:
+      operationId: checkSchemeEligibility
+      summary: Check farmer eligibility for government schemes
+      description: |
+        Checks eligibility across all major central and state agricultural schemes:
+        PMFBY (crop insurance), PM-KISAN (income support), Kisan Credit Card,
+        Soil Health Card, PKVY (organic farming), PM Kusum (solar pump).
+        Uses AgriStack farmer ID when available for faster lookup.
+      tags: [schemes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SchemeEligibilityRequest"
+      responses:
+        "200":
+          description: Eligibility results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SchemeEligibilityResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /diagnose/crop:
+    post:
+      operationId: diagnoseCrop
+      summary: AI crop disease diagnosis from image
+      description: |
+        Diagnoses crop disease from a smartphone photo. Returns disease identification,
+        severity (1-5), affected area percentage, treatment protocol, and organic alternatives.
+
+        Model: EfficientNet-B4 fine-tuned on 54,000 Indian crop images across 43 disease classes.
+        Accuracy: >87% top-1 on held-out test set (validated with IARI, ICAR-NRC).
+
+        Image requirements: JPEG/PNG/WEBP, 150KB–10MB, minimum 640×480px.
+        For < 2G bandwidth, images are accepted as base64 in JSON or as multipart/form-data.
+        Max processing time: 8 seconds (P99).
+      tags: [diagnose]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image, crop_type]
+              properties:
+                image:
+                  type: string
+                  format: binary
+                  description: Crop photo (JPEG/PNG/WEBP, max 10MB)
+                crop_type:
+                  type: string
+                  description: Crop species to constrain model (improves accuracy)
+                  example: "tomato"
+                growth_stage:
+                  type: string
+                  enum: [seedling, vegetative, flowering, fruiting, harvest]
+                  description: Optional — helps narrow disease class
+                location:
+                  type: string
+                  description: "lat,lng — used to filter for regionally relevant diseases"
+                  example: "28.6139,77.2090"
+          application/json:
+            schema:
+              type: object
+              required: [image_base64, crop_type]
+              properties:
+                image_base64:
+                  type: string
+                  format: byte
+                  description: Base64-encoded image for low-bandwidth clients
+                crop_type:
+                  type: string
+                growth_stage:
+                  type: string
+                  enum: [seedling, vegetative, flowering, fruiting, harvest]
+                location:
+                  type: string
+      responses:
+        "200":
+          description: Diagnosis complete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiagnoseResponse"
+        "400":
+          description: Image quality too low or unrecognizable crop
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /advisory/unified:
+    post:
+      operationId: getUnifiedAdvisory
+      summary: Full farming advisory combining all signals
+      description: |
+        Single call that returns a comprehensive, actionable advisory combining:
+        - Best mandis to sell at within the next 7 days (price trend + distance)
+        - Weather risk alerts for the farm location (next 72 hours)
+        - Active government scheme applications (PMFBY enrollment deadlines)
+        - Crop disease risk based on current weather + regional alerts
+        - Optimal action timeline (what to do in the next 3 days)
+
+        This is the highest-value endpoint. Designed for agri-app integrations
+        that want a single call to power an entire farmer dashboard screen.
+
+        Response includes Llama 3.3 70B generated summary in the farmer's language,
+        structured data for programmatic use, and voice-ready TTS text.
+      tags: [advisory]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UnifiedAdvisoryRequest"
+      responses:
+        "200":
+          description: Advisory ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnifiedAdvisoryResponse"
+        "202":
+          description: Advisory is being computed asynchronously (large farms or complex queries)
+          headers:
+            Location:
+              description: Poll this URL for result
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                  poll_url:
+                    type: string
+                  estimated_seconds:
+                    type: integer
+
+  /advisory/jobs/{job_id}:
+    get:
+      operationId: getAdvisoryJob
+      summary: Poll async advisory job
+      tags: [advisory]
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Advisory complete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnifiedAdvisoryResponse"
+        "202":
+          description: Still computing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [queued, processing]
+                  progress_pct:
+                    type: integer
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  schemas:
+    MandiPrice:
+      type: object
+      required: [mandi_id, mandi_name, state, district, modal_price_paise, min_price_paise, max_price_paise, recorded_at, source]
+      properties:
+        mandi_id:
+          type: string
+          description: AgMarkNet mandi code
+        mandi_name:
+          type: string
+        state:
+          type: string
+        district:
+          type: string
+        distance_km:
+          type: number
+          format: double
+        modal_price_paise:
+          type: integer
+          description: Modal (most common) price in paise per quintal. Divide by 100 for rupees.
+        min_price_paise:
+          type: integer
+        max_price_paise:
+          type: integer
+        variety:
+          type: string
+        grade:
+          type: string
+          enum: [FAQ, Grade_A, Grade_B, Ungraded]
+        recorded_at:
+          type: string
+          format: date-time
+        source:
+          type: string
+          enum: [agmarknet, enam_live, estimated]
+        trend_7d:
+          type: string
+          enum: [rising, falling, stable]
+          description: Price trend compared to 7 days ago
+        trend_pct:
+          type: number
+          format: double
+          description: Percentage change vs 7 days ago
+
+    MandiPriceResponse:
+      type: object
+      required: [crop, mandis, best_mandi, fetched_at]
+      properties:
+        crop:
+          type: string
+        mandis:
+          type: array
+          items:
+            $ref: "#/components/schemas/MandiPrice"
+        best_mandi:
+          description: Highest modal price within radius
+          allOf:
+            - $ref: "#/components/schemas/MandiPrice"
+        average_price_paise:
+          type: integer
+        price_range_paise:
+          type: object
+          properties:
+            min:
+              type: integer
+            max:
+              type: integer
+        fetched_at:
+          type: string
+          format: date-time
+
+    WeatherForecastResponse:
+      type: object
+      required: [location, daily, agri_indices, fetched_at]
+      properties:
+        location:
+          type: object
+          properties:
+            lat:
+              type: number
+            lng:
+              type: number
+            district:
+              type: string
+            state:
+              type: string
+        daily:
+          type: array
+          maxItems: 7
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              temp_max_c:
+                type: number
+              temp_min_c:
+                type: number
+              rainfall_mm:
+                type: number
+              humidity_pct:
+                type: number
+              wind_speed_kmh:
+                type: number
+              cloud_cover_pct:
+                type: number
+              sunrise:
+                type: string
+                format: time
+              sunset:
+                type: string
+                format: time
+              hourly:
+                type: array
+                items:
+                  type: object
+        agri_indices:
+          type: object
+          properties:
+            soil_moisture_index:
+              type: number
+              minimum: 0
+              maximum: 1
+            evapotranspiration_mm:
+              type: number
+            pest_risk_index:
+              type: string
+              enum: [low, moderate, high, very_high]
+            frost_risk:
+              type: boolean
+            optimal_spray_windows:
+              type: array
+              items:
+                type: object
+                properties:
+                  date:
+                    type: string
+                    format: date
+                  start_time:
+                    type: string
+                  end_time:
+                    type: string
+                  reason:
+                    type: string
+        fetched_at:
+          type: string
+          format: date-time
+
+    SchemeEligibilityRequest:
+      type: object
+      required: [state, land_area_acres, crops]
+      properties:
+        agristack_farmer_id:
+          type: string
+          description: If provided, pre-fills land records and bank account details
+        state:
+          type: string
+          description: Indian state code (ISO 3166-2:IN suffix, e.g. "MH")
+        district:
+          type: string
+        land_area_acres:
+          type: number
+          format: double
+          minimum: 0.1
+        land_type:
+          type: string
+          enum: [owned, leased, sharecropped]
+        crops:
+          type: array
+          items:
+            type: string
+        bank_account_linked:
+          type: boolean
+          default: false
+        has_soil_health_card:
+          type: boolean
+          default: false
+
+    SchemeEligibilityResponse:
+      type: object
+      required: [schemes, checked_at]
+      properties:
+        schemes:
+          type: array
+          items:
+            type: object
+            required: [scheme_id, name, eligible, reason]
+            properties:
+              scheme_id:
+                type: string
+              name:
+                type: string
+              eligible:
+                type: boolean
+              reason:
+                type: string
+              benefit_amount_inr:
+                type: integer
+                description: Annual benefit in rupees if enrolled
+              enrollment_deadline:
+                type: string
+                format: date
+              enrollment_url:
+                type: string
+              documents_required:
+                type: array
+                items:
+                  type: string
+        total_annual_benefit_inr:
+          type: integer
+        checked_at:
+          type: string
+          format: date-time
+
+    DiagnoseResponse:
+      type: object
+      required: [crop_type, detected, confidence, diagnosis, treatment, processing_ms]
+      properties:
+        crop_type:
+          type: string
+        detected:
+          type: boolean
+          description: False if image quality too low or no crop found
+        confidence:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          description: Model confidence score
+        diagnosis:
+          type: object
+          properties:
+            disease_id:
+              type: string
+              description: EPPO code or Tinai internal code
+            disease_name:
+              type: string
+              example: "Early Blight (Alternaria solani)"
+            severity:
+              type: integer
+              minimum: 1
+              maximum: 5
+              description: "1=trace, 2=mild, 3=moderate, 4=severe, 5=critical"
+            affected_area_pct:
+              type: number
+              format: double
+            is_contagious:
+              type: boolean
+            spread_risk:
+              type: string
+              enum: [low, moderate, high]
+        treatment:
+          type: object
+          properties:
+            immediate_actions:
+              type: array
+              items:
+                type: string
+            chemical_controls:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  active_ingredient:
+                    type: string
+                  dosage:
+                    type: string
+                  application_method:
+                    type: string
+                  waiting_period_days:
+                    type: integer
+            organic_alternatives:
+              type: array
+              items:
+                type: string
+            preventive_measures:
+              type: array
+              items:
+                type: string
+        voice_summary:
+          type: string
+          description: Short plain-language summary, suitable for TTS. In farmer's language if Accept-Language set.
+        processing_ms:
+          type: integer
+        model_version:
+          type: string
+
+    UnifiedAdvisoryRequest:
+      type: object
+      required: [lat, lng, crops]
+      properties:
+        lat:
+          type: number
+          format: double
+        lng:
+          type: number
+          format: double
+        crops:
+          type: array
+          items:
+            type: string
+          description: Active crops on the farm
+        land_area_acres:
+          type: number
+          format: double
+        agristack_farmer_id:
+          type: string
+        include:
+          type: array
+          items:
+            type: string
+            enum: [mandi, weather, schemes, disease_risk, cold_storage]
+          default: [mandi, weather, schemes, disease_risk]
+          description: Which data sources to include. Omit for all.
+        sell_horizon_days:
+          type: integer
+          default: 7
+          description: Planning horizon for sell timing recommendations
+
+    UnifiedAdvisoryResponse:
+      type: object
+      required: [advisory_id, generated_at, farmer_summary, actions]
+      properties:
+        advisory_id:
+          type: string
+          description: Unique ID for this advisory (used for feedback loop)
+        generated_at:
+          type: string
+          format: date-time
+        farmer_summary:
+          type: string
+          description: |
+            AI-generated plain language summary in farmer's language.
+            Designed for voice delivery (no markdown, no tables).
+            Average length: 80-120 words.
+        farmer_summary_tts_url:
+          type: string
+          description: Pre-rendered audio URL (Coqui TTS, MP3, 64kbps, 15-20s)
+        actions:
+          type: array
+          description: Prioritised action items for the next 3 days
+          items:
+            type: object
+            required: [priority, action, reason, deadline]
+            properties:
+              priority:
+                type: integer
+                minimum: 1
+                maximum: 5
+              action:
+                type: string
+              reason:
+                type: string
+              deadline:
+                type: string
+                format: date
+              category:
+                type: string
+                enum: [sell, weather, scheme, disease, logistics]
+        mandi_recommendations:
+          type: array
+          items:
+            type: object
+            properties:
+              crop:
+                type: string
+              recommended_mandi:
+                $ref: "#/components/schemas/MandiPrice"
+              sell_by:
+                type: string
+                format: date
+              reason:
+                type: string
+        weather_alerts:
+          type: array
+          items:
+            type: object
+            properties:
+              severity:
+                type: string
+                enum: [advisory, watch, warning, emergency]
+              message:
+                type: string
+              starts_at:
+                type: string
+                format: date-time
+              ends_at:
+                type: string
+                format: date-time
+        scheme_deadlines:
+          type: array
+          items:
+            type: object
+            properties:
+              scheme:
+                type: string
+              deadline:
+                type: string
+                format: date
+              action_required:
+                type: string
+        disease_risk:
+          type: object
+          properties:
+            overall_risk:
+              type: string
+              enum: [low, moderate, high, very_high]
+            crop_risks:
+              type: array
+              items:
+                type: object
+                properties:
+                  crop:
+                    type: string
+                  disease:
+                    type: string
+                  risk_level:
+                    type: string
+                  preventive_action:
+                    type: string
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+
+  responses:
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+        X-RateLimit-Reset:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    ValidationError:
+      description: Request validation failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Tinai-Key
+      description: "Format: tn_{env}_{type}_{32hex}. Example: tn_prod_agri_a3f2..."
+
+security:
+  - ApiKeyAuth: []

@@ -1,0 +1,27 @@
+{
+  "name": "@tinai/ops-security",
+  "version": "0.1.0",
+  "description": "Tinai operations and security automation — 11 services",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "provision":  "node namespace-provisioner/src/index.js",
+    "build":      "node build-deploy/src/index.js",
+    "rollback":   "node rollback-controller/src/index.js",
+    "hpa":        "node hpa-scaler/src/index.js",
+    "alerts":     "node incident-alerting/src/index.js",
+    "dlq":        "node dlq-monitor/src/index.js",
+    "onboarding": "node onboarding-sequence/src/index.js",
+    "cve":        "node security/cve-scanner/index.js",
+    "netpol":     "node security/network-policy/index.js",
+    "egress":     "node security/egress-anomaly/index.js"
+  },
+  "dependencies": {
+    "fastify":     "^4.26.0",
+    "nats":        "^2.18.0",
+    "nodemailer":  "^6.9.0",
+    "pino":        "^8.19.0",
+    "pino-pretty": "^11.0.0"
+  },
+  "engines": { "node": ">=20" }
+}

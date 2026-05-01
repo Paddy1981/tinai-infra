@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tinai-forge-db-init
+  namespace: tinai-system
+data:
+  init.sql: |
+    -- Create forge database and user
+    CREATE DATABASE tinai_forge;
+    CREATE USER forge WITH PASSWORD 'CHANGEME_FORGE_DB_PASS';
+    GRANT ALL PRIVILEGES ON DATABASE tinai_forge TO forge;
+    \c tinai_forge
+    GRANT ALL ON SCHEMA public TO forge;

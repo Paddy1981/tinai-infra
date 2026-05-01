@@ -1,0 +1,157 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tinai.cloud/schemas/tinai.json/v1",
+  "title": "tinai.json",
+  "description": "Tinai infrastructure-from-code project specification",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "services": {
+      "type": "array",
+      "description": "Application services to deploy as Kubernetes Deployments",
+      "items": {
+        "type": "object",
+        "required": ["name", "image", "port"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "description": "Service name (lowercase, alphanumeric, hyphens)"
+          },
+          "image": {
+            "type": "string",
+            "description": "Container image reference (e.g. registry.tinai.cloud/myapp:latest)"
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535,
+            "description": "Container port the service listens on"
+          },
+          "env": {
+            "type": "object",
+            "description": "Environment variables as key-value string pairs",
+            "additionalProperties": { "type": "string" }
+          },
+          "replicas": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 1,
+            "description": "Number of pod replicas"
+          },
+          "memory": {
+            "type": "string",
+            "pattern": "^[0-9]+(Mi|Gi|M|G)$",
+            "default": "256Mi",
+            "description": "Memory request/limit (e.g. 256Mi, 1Gi)"
+          },
+          "cpu": {
+            "type": "string",
+            "pattern": "^[0-9]+(m|\\.[0-9]+)?$",
+            "default": "100m",
+            "description": "CPU request/limit (e.g. 100m, 0.5)"
+          }
+        }
+      }
+    },
+    "volumes": {
+      "type": "array",
+      "description": "Persistent volumes (PersistentVolumeClaims)",
+      "items": {
+        "type": "object",
+        "required": ["name", "size"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "description": "PVC name"
+          },
+          "size": {
+            "type": "string",
+            "pattern": "^[0-9]+(Mi|Gi|Ti|M|G|T)$",
+            "description": "Storage size (e.g. 1Gi, 10Gi)"
+          },
+          "storageClass": {
+            "type": "string",
+            "description": "Kubernetes StorageClass name (omit to use cluster default)"
+          },
+          "accessMode": {
+            "type": "string",
+            "enum": ["ReadWriteOnce", "ReadWriteMany", "ReadOnlyMany"],
+            "default": "ReadWriteOnce"
+          }
+        }
+      }
+    },
+    "databases": {
+      "type": "array",
+      "description": "Managed PostgreSQL instances via CloudNativePG (CNPG)",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "description": "Database cluster name"
+          },
+          "version": {
+            "type": "string",
+            "enum": ["14", "15", "16"],
+            "default": "16",
+            "description": "PostgreSQL major version"
+          },
+          "instances": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1,
+            "description": "Number of PostgreSQL instances (1 = single, 2+ = HA)"
+          },
+          "storage": {
+            "type": "string",
+            "pattern": "^[0-9]+(Mi|Gi|Ti|M|G|T)$",
+            "default": "1Gi",
+            "description": "Storage size per PostgreSQL instance"
+          }
+        }
+      }
+    },
+    "domains": {
+      "type": "array",
+      "description": "Ingress domain mappings for services",
+      "items": {
+        "type": "object",
+        "required": ["service", "host"],
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "type": "string",
+            "description": "Name of the service (must match a service.name)"
+          },
+          "host": {
+            "type": "string",
+            "format": "hostname",
+            "description": "Hostname to route to the service (e.g. myapp.tinai.cloud)"
+          },
+          "tls": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable TLS via cert-manager / Let's Encrypt"
+          },
+          "tlsSecret": {
+            "type": "string",
+            "description": "Name of the TLS secret (auto-generated if omitted)"
+          },
+          "pathPrefix": {
+            "type": "string",
+            "default": "/",
+            "description": "URL path prefix to route"
+          }
+        }
+      }
+    }
+  }
+}

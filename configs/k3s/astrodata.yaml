@@ -1,0 +1,73 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: astro-data
+  namespace: tinai-apps
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: astro-data
+  template:
+    metadata:
+      labels:
+        app: astro-data
+    spec:
+      nodeSelector:
+        tinai.cloud/role: stateful
+      containers:
+        - name: astro-data
+          image: docker.io/tinai/astro-data:v1
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 3000
+              hostPort: 3060
+          env:
+            - name: NODE_ENV
+              value: production
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: astro-data
+  namespace: tinai-apps
+spec:
+  selector:
+    app: astro-data
+  ports:
+    - port: 3000
+      targetPort: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: astro-data
+  namespace: tinai-apps
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: astrodata.laruneng.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: astro-data
+                port:
+                  number: 3000

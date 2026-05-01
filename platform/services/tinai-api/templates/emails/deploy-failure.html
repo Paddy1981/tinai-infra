@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deployment Failed - TinAI Cloud</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background-color: #f5f5f5;
+      line-height: 1.6;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      background-color: #ffffff;
+    }
+    .header {
+      background: linear-gradient(135deg, #07070F 0%, #14142A 100%);
+      padding: 40px 20px;
+      text-align: center;
+    }
+    .logo-mark {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 16px;
+    }
+    .wordmark {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: #EDE9E1;
+      margin: 0;
+    }
+    .wordmark-suffix {
+      font-weight: 300;
+      opacity: 0.38;
+    }
+    .status-banner {
+      background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+      padding: 20px;
+      text-align: center;
+      color: #ffffff;
+    }
+    .status-icon {
+      font-size: 48px;
+      margin-bottom: 8px;
+    }
+    .status-title {
+      font-size: 24px;
+      font-weight: 600;
+      margin: 0;
+    }
+    .content {
+      padding: 40px 30px;
+      color: #1A1818;
+    }
+    .app-name {
+      font-size: 20px;
+      font-weight: 600;
+      color: #1A1818;
+      margin-bottom: 8px;
+    }
+    .deploy-id {
+      font-size: 13px;
+      color: #4A4A4A;
+      font-family: 'Courier New', monospace;
+      margin-bottom: 20px;
+    }
+    .deploy-info {
+      background-color: #FEE2E2;
+      border-radius: 8px;
+      border-left: 4px solid #EF4444;
+      padding: 20px;
+      margin: 20px 0;
+    }
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid #FECACA;
+    }
+    .info-row:last-child {
+      border-bottom: none;
+    }
+    .info-label {
+      font-size: 14px;
+      color: #7F1D1D;
+      font-weight: 500;
+    }
+    .info-value {
+      font-size: 14px;
+      color: #991B1B;
+      font-weight: 600;
+    }
+    .error-box {
+      background-color: #1A1818;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 30px 0;
+    }
+    .error-title {
+      font-size: 14px;
+      color: #EF4444;
+      font-weight: 600;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .error-message {
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      color: #F5F0E8;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.5;
+    }
+    .cta-button {
+      display: inline-block;
+      background-color: #F97316;
+      color: #ffffff;
+      text-decoration: none;
+      padding: 14px 32px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 16px;
+      margin: 20px 8px;
+      transition: background-color 0.2s;
+    }
+    .cta-button:hover {
+      background-color: #C2410C;
+    }
+    .cta-button-secondary {
+      background-color: #14142A;
+    }
+    .cta-button-secondary:hover {
+      background-color: #07070F;
+    }
+    .troubleshooting {
+      background-color: #F5F0E8;
+      border-radius: 8px;
+      padding: 24px;
+      margin: 30px 0;
+    }
+    .troubleshooting h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0 0 16px 0;
+      color: #1A1818;
+    }
+    .troubleshooting ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+    .troubleshooting li {
+      font-size: 14px;
+      color: #4A4A4A;
+      margin-bottom: 12px;
+    }
+    .troubleshooting code {
+      background-color: #ffffff;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 13px;
+      font-family: 'Courier New', monospace;
+    }
+    .support-section {
+      text-align: center;
+      margin: 30px 0;
+      padding: 20px;
+      background-color: #FEF3C7;
+      border-radius: 8px;
+    }
+    .support-text {
+      font-size: 14px;
+      color: #78350F;
+      margin-bottom: 12px;
+    }
+    .support-link {
+      color: #F97316;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .footer {
+      background-color: #07070F;
+      padding: 30px 20px;
+      text-align: center;
+      color: #EDE9E1;
+    }
+    .footer-text {
+      font-size: 12px;
+      opacity: 0.7;
+      margin: 8px 0;
+    }
+    .unsubscribe {
+      color: #F97316;
+      text-decoration: none;
+      font-size: 12px;
+    }
+    .unsubscribe:hover {
+      text-decoration: underline;
+    }
+    @media only screen and (max-width: 600px) {
+      .content {
+        padding: 30px 20px;
+      }
+      .error-box {
+        padding: 16px;
+      }
+      .cta-button {
+        display: block;
+        margin: 12px 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <svg class="logo-mark" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 8,4 H 24 Q 29,4 29,9 V 14 H 20 V 28 Q 20,32 16,32 Q 12,32 12,28 V 14 H 3 V 9 Q 3,4 8,4 Z" fill="#F97316"/>
+      </svg>
+      <h1 class="wordmark">tinai<span class="wordmark-suffix">.cloud</span></h1>
+    </div>
+
+    <!-- Status Banner -->
+    <div class="status-banner">
+      <div class="status-icon">❌</div>
+      <h2 class="status-title">Deployment Failed</h2>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+      <div class="app-name">{{appName}}</div>
+      <div class="deploy-id">Deploy ID: {{deploymentId}}</div>
+
+      <div class="deploy-info">
+        <div class="info-row">
+          <span class="info-label">Branch</span>
+          <span class="info-value">{{branch}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Commit</span>
+          <span class="info-value">{{commitShort}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Failed At</span>
+          <span class="info-value">{{failedAt}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Build Phase</span>
+          <span class="info-value">{{failedPhase}}</span>
+        </div>
+      </div>
+
+      <div class="error-box">
+        <div class="error-title">Error Details</div>
+        <div class="error-message">{{errorMessage}}</div>
+      </div>
+
+      <center>
+        <a href="{{logsUrl}}" class="cta-button">View Full Logs</a>
+        <a href="{{retryUrl}}" class="cta-button cta-button-secondary">Retry Deployment</a>
+      </center>
+
+      <div class="troubleshooting">
+        <h3>Common Solutions</h3>
+        <ul>
+          <li><strong>Build errors:</strong> Check your <code>package.json</code> dependencies and build scripts</li>
+          <li><strong>Environment variables:</strong> Ensure all required env vars are set in your project settings</li>
+          <li><strong>Memory issues:</strong> Your build may need more resources — upgrade your plan or optimize your build</li>
+          <li><strong>Network timeouts:</strong> Check for slow or failing external API calls during build</li>
+          <li><strong>Node version:</strong> Verify you're using a supported Node.js version (check <code>engines</code> field)</li>
+        </ul>
+      </div>
+
+      <div class="support-section">
+        <p class="support-text">Still stuck? Our team is here to help debug your deployment.</p>
+        <a href="mailto:{{supportEmail}}" class="support-link">Contact Support →</a>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <p class="footer-text">© 2025 TinAI Cloud. All rights reserved.</p>
+      <p class="footer-text">
+        <a href="{{unsubscribeUrl}}" class="unsubscribe">Unsubscribe</a> |
+        <a href="{{preferencesUrl}}" class="unsubscribe">Email Preferences</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: build-api
+  namespace: tinai-system
+  labels:
+    tinai.cloud/component: build-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      tinai.cloud/component: build-api
+  template:
+    metadata:
+      labels:
+        tinai.cloud/component: build-api
+    spec:
+      serviceAccountName: tinai-deploy-sa
+      imagePullSecrets:
+        - name: e2e-registry-secret
+      containers:
+        - name: build-api
+          image: docker.io/tinai/build-api:v1
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: BUILD_NAMESPACE
+              value: tinai-build
+            - name: STAGING_NAMESPACE
+              value: tinai-staging
+            - name: PROD_NAMESPACE
+              value: tinai-prod
+            - name: REGISTRY_HOST
+              value: forgejo.tinai-system.svc.cluster.local:3000
+            - name: FORGEJO_EXTERNAL_URL
+              value: "https://git.tinai.cloud"
+            - name: FORGEJO_INTERNAL_URL
+              value: "http://forgejo.tinai-system.svc.cluster.local:3000"
+            - name: APPS_DOMAIN
+              value: "apps.tinai.cloud"
+            - name: CERT_ISSUER
+              value: "letsencrypt-prod"
+            - name: DEFAULT_REGION
+              value: "IN"
+            - name: QATAR_STAGING_NS
+              value: "tinai-staging-qa"
+            - name: QATAR_PROD_NS
+              value: "tinai-prod-qa"
+            - name: UAE_STAGING_NS
+              value: "tinai-staging-ae"
+            - name: UAE_PROD_NS
+              value: "tinai-prod-ae"
+            - name: WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: build-api-secrets
+                  key: webhook-secret
+            - name: INTERNAL_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: build-api-secrets
+                  key: internal-token
+            - name: SCAN_ENABLED
+              value: "false"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: build-api
+  namespace: tinai-system
+spec:
+  selector:
+    tinai.cloud/component: build-api
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: build-api
+  namespace: tinai-system
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: build.tinai.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: build-api
+                port:
+                  number: 8080

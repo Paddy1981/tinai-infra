@@ -1,0 +1,13 @@
+ARG UPSTREAM_VERSION=1.22.6
+FROM codeberg.org/forgejo/forgejo:${UPSTREAM_VERSION}
+
+# TinAI brand overlay
+COPY templates/ /data/gitea/templates/
+COPY public/css/ /data/gitea/public/css/
+COPY public/img/ /data/gitea/public/img/
+
+# TinAI config defaults
+COPY config/app.ini.snippet /tmp/tinai-app.ini.snippet
+
+ENV GITEA_CUSTOM=/data/gitea
+LABEL tinai.product="tinai-repos" tinai.upstream="forgejo"

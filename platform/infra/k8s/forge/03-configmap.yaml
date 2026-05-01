@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tinai-forge-config
+  namespace: tinai-forge
+data:
+  CHECK_INTERVAL_HOURS: "6"
+  AUTO_BUILD_PATCH: "true"
+  AUTO_BUILD_MINOR: "false"
+  REGISTRY_HOST: "registry.e2enetworks.net"
+  REGISTRY_PROJECT: "tinai"
+  KUBE_NAMESPACE: "tinai-forge"
+  TEST_NAMESPACE: "tinai-forge-test"
+  PROMETHEUS_URL: "http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090"
+  API_PORT: "8090"
+  # Products to watch (comma-separated)
+  WATCHED_PRODUCTS: "forgejo,woodpecker,grafana,prometheus,loki,minio,cloudnativepg,cert-manager,keda,knative,ingress-nginx"

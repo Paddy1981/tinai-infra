@@ -1,0 +1,10 @@
+# Build output
+/realtime
+/realtime.exe
+
+# Environment
+.env
+.env.*
+!.env.example
+node_modules/
+.env.local

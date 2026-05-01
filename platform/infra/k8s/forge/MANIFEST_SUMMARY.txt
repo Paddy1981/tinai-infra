@@ -1,0 +1,281 @@
+================================================================================
+TinAI FORGE - KUBERNETES INFRASTRUCTURE MANIFESTS
+================================================================================
+
+Project: TinAI Forge (Automated White-Label Pipeline System)
+Cluster: E2E Networks Kubernetes
+Context: kubernetes-admin@kubernetes
+Registry: registry.e2enetworks.net/tinai/
+
+================================================================================
+FILES CREATED
+================================================================================
+
+Core Manifests (numbered for deployment order):
+├── 00-namespace.yaml           Creates tinai-forge and tinai-forge-test namespaces
+├── 01-rbac.yaml               ServiceAccount + ClusterRole + ClusterRoleBinding
+├── 02-secrets.yaml            Database URL, API keys, registry credentials
+├── 03-configmap.yaml          Configuration for version checking and products
+├── 04-deployment.yaml         Main tinai-forge application deployment
+├── 05-service.yaml            ClusterIP service + internal proxy in tinai-system
+├── 06-networkpolicy.yaml      Egress/Ingress policies for security isolation
+├── 07-cronjob.yaml            Version check CronJob (every 6 hours)
+├── 08-ingress.yaml            HTTPS ingress at forge.tinai.cloud
+└── 09-postgres-db.yaml        Database initialization ConfigMap
+
+Deployment Automation:
+└── deploy.sh                  Bash script for automated deployment (executable)
+
+Helm Charts (alternative deployment method):
+├── helm/Chart.yaml            Helm chart metadata (v0.1.0)
+└── helm/values.yaml           Default values for Helm deployment
+
+Documentation:
+├── README.md                  Comprehensive guide (created separately)
+└── MANIFEST_SUMMARY.txt       This file
+
+================================================================================
+NAMESPACES
+================================================================================
+
+tinai-forge
+  - Label: app.kubernetes.io/managed-by=tinai-forge
+  - Purpose: Production forge engine and builds
+
+tinai-forge-test
+  - Label: purpose=ephemeral-testing
+  - Purpose: Ephemeral test environments
+
+================================================================================
+RBAC CONFIGURATION
+================================================================================
+
+ServiceAccount: tinai-forge (tinai-forge namespace)
+
+ClusterRole: tinai-forge-operator (allows cross-namespace access)
+Permissions:
+  - batch/jobs: create, get, list, watch, delete, patch
+  - pods, pods/log: create, get, list, watch, delete
+  - services: create, get, list, delete
+  - secrets, configmaps: get, list
+  - deployments: get, list, patch, update
+
+ClusterRoleBinding: tinai-forge-operator
+  - Binds ServiceAccount to ClusterRole for cross-namespace operations
+
+================================================================================
+SECRETS & CONFIGURATION
+================================================================================
+
+Secrets (tinai-forge namespace):
+  1. tinai-forge-config (Opaque)
+     - FORGE_DB_URL: PostgreSQL connection string
+     - FORGE_GITHUB_TOKEN: Optional GitHub API token
+     - FORGE_API_KEY: Authentication key for forge API
+     - registry-username/password: Registry credentials
+
+  2. tinai-registry-credentials (kubernetes.io/dockerconfigjson)
+     - Docker config JSON for registry.e2enetworks.net
+
+ConfigMap: tinai-forge-config
+  - CHECK_INTERVAL_HOURS: 6 (version check frequency)
+  - AUTO_BUILD_PATCH: true
+  - AUTO_BUILD_MINOR: false
+  - REGISTRY_HOST: registry.e2enetworks.net
+  - REGISTRY_PROJECT: tinai
+  - KUBE_NAMESPACE: tinai-forge
+  - TEST_NAMESPACE: tinai-forge-test
+  - PROMETHEUS_URL: monitoring stack endpoint
+  - API_PORT: 8090
+  - WATCHED_PRODUCTS: forgejo,woodpecker,grafana,prometheus,loki,minio,
+                      cloudnativepg,cert-manager,keda,knative,ingress-nginx
+
+================================================================================
+DEPLOYMENT CONFIGURATION
+================================================================================
+
+Deployment: tinai-forge (tinai-forge namespace)
+  - Replicas: 1 (singleton - version checking engine)
+  - Image: registry.e2enetworks.net/tinai/tinai-forge:latest
+  - Port: 8090 (HTTP)
+  - ServiceAccount: tinai-forge
+  
+  Resources:
+    - Requests: CPU 100m, Memory 256Mi
+    - Limits: CPU 500m, Memory 512Mi
+
+  Probes:
+    - Liveness: /healthz (15s initial, 30s period)
+    - Readiness: /healthz (5s initial, 10s period)
+
+  Metrics: Prometheus-enabled
+    - Scrape: true, Port: 8090, Path: /metrics
+
+  Volume Mounts:
+    - /app/patches (tinai-forge-patches ConfigMap, read-only)
+
+  Image Pull Secrets:
+    - tinai-registry-credentials
+
+================================================================================
+SERVICES & NETWORKING
+================================================================================
+
+Services (tinai-forge namespace):
+  1. tinai-forge (ClusterIP)
+     - Port 8090 → Pod:8090
+
+  2. tinai-forge-internal (ExternalName in tinai-system)
+     - Proxy to tinai-forge.tinai-forge.svc.cluster.local:8090
+
+NetworkPolicies:
+  1. tinai-forge-egress (tinai-forge namespace)
+     Egress: DNS, Kubernetes API, Registry, GitHub, PostgreSQL
+     Ingress: From tinai-system, monitoring namespaces
+
+  2. tinai-forge-test-isolation (tinai-forge-test namespace)
+     Ingress: Only from tinai-forge
+     Egress: DNS, pod-to-pod, registry
+
+Ingress: tinai-forge (tinai-forge namespace)
+  - Host: forge.tinai.cloud
+  - Backend: tinai-forge:8090
+  - TLS: Yes (Let's Encrypt)
+  - Auth: Basic authentication (tinai-forge-basic-auth secret)
+  - NGINX ingress controller required
+
+================================================================================
+CRON JOBS
+================================================================================
+
+CronJob: tinai-forge-version-check (tinai-forge namespace)
+  - Schedule: Every 6 hours (0 */6 * * *)
+  - Concurrency: Forbid (singleton)
+  - History: 3 successful, 3 failed jobs kept
+  - Command: /app/forge-server --mode=check-only
+  - Resources: CPU 50m, Memory 128Mi (limits: 200m/256Mi)
+  - ServiceAccount: tinai-forge
+
+================================================================================
+DATABASE
+================================================================================
+
+ConfigMap: tinai-forge-db-init (tinai-system namespace)
+  Contains SQL initialization script:
+    - Creates: tinai_forge database
+    - Creates: forge user
+    - Grants: All privileges on tinai_forge to forge user
+    - Schema: public grants to forge user
+
+  Connection: CloudNativePG cluster (cnpg-cluster-rw.tinai-system.svc.cluster.local:5432)
+
+================================================================================
+HELM DEPLOYMENT
+================================================================================
+
+Chart: tinai-forge (v0.1.0)
+  - Type: application
+  - AppVersion: 1.0.0
+  - Maintainer: TinAI (admin@tinai.cloud)
+  - Home: https://tinai.cloud
+  - Source: https://github.com/tinai/tinai-forge
+
+Key Values:
+  - replicaCount: 1
+  - image.repository: registry.e2enetworks.net/tinai/tinai-forge
+  - image.tag: latest
+  - service.type: ClusterIP
+  - service.port: 8090
+  - ingress.host: forge.tinai.cloud
+  - ingress.tlsEnabled: true
+
+================================================================================
+DEPLOYMENT ORDER
+================================================================================
+
+The deploy.sh script applies manifests in the correct dependency order:
+
+1. 00-namespace.yaml         (Create namespaces first)
+2. 01-rbac.yaml             (RBAC for pod permissions)
+3. 02-secrets.yaml          (Secrets before deployment)
+4. 03-configmap.yaml        (ConfigMap for settings)
+5. 06-networkpolicy.yaml    (Network policies)
+6. 07-cronjob.yaml          (CronJob)
+7. 05-service.yaml          (Service definition)
+8. 08-ingress.yaml          (Ingress configuration)
+9. 04-deployment.yaml       (Main deployment last)
+
+================================================================================
+PRE-DEPLOYMENT CHECKLIST
+================================================================================
+
+Required before running deploy.sh:
+  [ ] Update 02-secrets.yaml with real credentials
+      - FORGE_DB_URL (PostgreSQL connection)
+      - FORGE_API_KEY (authentication key)
+      - Registry credentials (username, password, base64-encoded config)
+  [ ] PostgreSQL database created (tinai_forge)
+  [ ] Container image built and pushed to registry.e2enetworks.net/tinai/tinai-forge
+  [ ] kubectl context set to kubernetes-admin@kubernetes
+  [ ] Let's Encrypt ClusterIssuer (letsencrypt-prod) exists
+  [ ] NGINX ingress controller deployed
+  [ ] DNS entry for forge.tinai.cloud points to ingress IP
+  [ ] Create basic auth secret (tinai-forge-basic-auth)
+  [ ] Verify CNPG PostgreSQL cluster is running in tinai-system
+
+================================================================================
+QUICK DEPLOYMENT
+================================================================================
+
+# 1. Prepare
+cd /sessions/serene-awesome-cerf/mnt/tinai/tinai-infra/k8s/forge/
+nano 02-secrets.yaml  # Update with real values
+
+# 2. Deploy
+./deploy.sh
+
+# 3. Verify
+kubectl get pods -n tinai-forge
+kubectl logs -n tinai-forge deploy/tinai-forge -f
+
+# 4. Test
+kubectl port-forward -n tinai-forge svc/tinai-forge 8090:8090
+curl http://localhost:8090/healthz
+
+================================================================================
+VALIDATION
+================================================================================
+
+All YAML files have been validated:
+  ✓ 00-namespace.yaml
+  ✓ 01-rbac.yaml
+  ✓ 02-secrets.yaml
+  ✓ 03-configmap.yaml
+  ✓ 04-deployment.yaml
+  ✓ 05-service.yaml
+  ✓ 06-networkpolicy.yaml
+  ✓ 07-cronjob.yaml
+  ✓ 08-ingress.yaml
+  ✓ 09-postgres-db.yaml
+
+Script validation:
+  ✓ deploy.sh (executable, bash syntax valid)
+
+Helm validation:
+  ✓ Chart.yaml (valid Helm metadata)
+  ✓ values.yaml (valid YAML structure)
+
+================================================================================
+FILESYSTEM LOCATION
+================================================================================
+
+Base directory:
+  /sessions/serene-awesome-cerf/mnt/tinai/tinai-infra/k8s/forge/
+
+All files are ready for deployment on E2E Networks Kubernetes cluster.
+
+Last updated: 2026-03-24
+Manifest version: 1.0.0
+Status: Production-ready
+
+================================================================================

@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tinai-api
+  namespace: tinai-system
+  labels:
+    app: tinai-api
+    version: "1.0"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tinai-api
+  template:
+    metadata:
+      labels:
+        app: tinai-api
+        version: "1.0"
+    spec:
+      imagePullSecrets:
+        - name: e2e-registry-secret
+      containers:
+        - name: api
+          image: registry.e2enetworks.net/tinai/api:latest
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - secretRef:
+                name: tinai-api-secrets
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "3000"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tinai-api
+  namespace: tinai-system
+spec:
+  selector:
+    app: tinai-api
+  ports:
+    - port: 3000
+      targetPort: 3000

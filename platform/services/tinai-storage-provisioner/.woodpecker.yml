@@ -1,0 +1,23 @@
+steps:
+  - name: test
+    image: golang:1.22-alpine
+    commands:
+      - go test ./...
+
+  - name: build-push
+    image: woodpeckerci/plugin-docker-buildx
+    settings:
+      registry: registry.e2enetworks.net
+      repo: registry.e2enetworks.net/tinai/storage-provisioner
+      tags:
+        - latest
+        - ${CI_COMMIT_SHA:0:8}
+      username:
+        from_secret: REGISTRY_USERNAME
+      password:
+        from_secret: REGISTRY_PASSWORD
+      platforms:
+        - linux/amd64
+    when:
+      branch: main
+      event: push

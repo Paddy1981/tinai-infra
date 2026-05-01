@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="36" viewBox="0 0 160 36">
+  <!--
+    Tinai.cloud — Horizontal wordmark (dark/transparent background)
+    T-mark + "tinai" bold + ".cloud" light weight
+    Font: Outfit (Google Fonts) — approximate paths used here for portability.
+    For web use, prefer the HTML/CSS lockup with the Outfit font loaded.
+  -->
+
+  <!-- T-mark at 36px -->
+  <svg x="0" y="0" width="36" height="36" viewBox="0 0 32 32">
+    <path
+      d="M 8,4 H 24 Q 29,4 29,9 V 14 H 20 V 28 Q 20,32 16,32 Q 12,32 12,28 V 14 H 3 V 9 Q 3,4 8,4 Z"
+      fill="#F97316"
+    />
+  </svg>
+
+  <!-- Wordmark text — for accurate rendering load Outfit font -->
+  <text
+    x="48"
+    y="26"
+    font-family="Outfit, 'DM Sans', system-ui, sans-serif"
+    font-size="22"
+    font-weight="700"
+    letter-spacing="-0.6"
+    fill="#EDE9E1"
+  >tinai</text>
+  <text
+    x="103"
+    y="26"
+    font-family="Outfit, 'DM Sans', system-ui, sans-serif"
+    font-size="22"
+    font-weight="300"
+    letter-spacing="-0.6"
+    fill="#EDE9E1"
+    opacity="0.38"
+  >.cloud</text>
+</svg>

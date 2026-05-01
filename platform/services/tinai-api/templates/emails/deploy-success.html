@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deployment Successful - TinAI Cloud</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background-color: #f5f5f5;
+      line-height: 1.6;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      background-color: #ffffff;
+    }
+    .header {
+      background: linear-gradient(135deg, #07070F 0%, #14142A 100%);
+      padding: 40px 20px;
+      text-align: center;
+    }
+    .logo-mark {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 16px;
+    }
+    .wordmark {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: #EDE9E1;
+      margin: 0;
+    }
+    .wordmark-suffix {
+      font-weight: 300;
+      opacity: 0.38;
+    }
+    .status-banner {
+      background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+      padding: 20px;
+      text-align: center;
+      color: #ffffff;
+    }
+    .status-icon {
+      font-size: 48px;
+      margin-bottom: 8px;
+    }
+    .status-title {
+      font-size: 24px;
+      font-weight: 600;
+      margin: 0;
+    }
+    .content {
+      padding: 40px 30px;
+      color: #1A1818;
+    }
+    .app-name {
+      font-size: 20px;
+      font-weight: 600;
+      color: #1A1818;
+      margin-bottom: 8px;
+    }
+    .deploy-id {
+      font-size: 13px;
+      color: #4A4A4A;
+      font-family: 'Courier New', monospace;
+      margin-bottom: 20px;
+    }
+    .deploy-info {
+      background-color: #F5F0E8;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid #E5E5E5;
+    }
+    .info-row:last-child {
+      border-bottom: none;
+    }
+    .info-label {
+      font-size: 14px;
+      color: #4A4A4A;
+      font-weight: 500;
+    }
+    .info-value {
+      font-size: 14px;
+      color: #1A1818;
+      font-weight: 600;
+    }
+    .live-url-box {
+      background: linear-gradient(135deg, #F97316 0%, #C2410C 100%);
+      border-radius: 8px;
+      padding: 24px;
+      margin: 30px 0;
+      text-align: center;
+    }
+    .live-url-label {
+      font-size: 14px;
+      color: #FDBA74;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+    }
+    .live-url {
+      font-size: 18px;
+      color: #ffffff;
+      text-decoration: none;
+      word-break: break-all;
+      display: block;
+      margin-bottom: 16px;
+      font-weight: 500;
+    }
+    .visit-button {
+      display: inline-block;
+      background-color: #ffffff;
+      color: #F97316;
+      text-decoration: none;
+      padding: 12px 28px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 15px;
+      transition: background-color 0.2s;
+    }
+    .visit-button:hover {
+      background-color: #F5F0E8;
+    }
+    .action-links {
+      margin: 30px 0;
+      text-align: center;
+    }
+    .action-link {
+      display: inline-block;
+      color: #F97316;
+      text-decoration: none;
+      margin: 0 12px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .action-link:hover {
+      text-decoration: underline;
+    }
+    .next-steps {
+      background-color: #F5F0E8;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 30px 0;
+    }
+    .next-steps h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0 0 16px 0;
+      color: #1A1818;
+    }
+    .next-steps ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+    .next-steps li {
+      font-size: 14px;
+      color: #4A4A4A;
+      margin-bottom: 8px;
+    }
+    .footer {
+      background-color: #07070F;
+      padding: 30px 20px;
+      text-align: center;
+      color: #EDE9E1;
+    }
+    .footer-text {
+      font-size: 12px;
+      opacity: 0.7;
+      margin: 8px 0;
+    }
+    .unsubscribe {
+      color: #F97316;
+      text-decoration: none;
+      font-size: 12px;
+    }
+    .unsubscribe:hover {
+      text-decoration: underline;
+    }
+    @media only screen and (max-width: 600px) {
+      .content {
+        padding: 30px 20px;
+      }
+      .live-url-box {
+        padding: 20px;
+      }
+      .live-url {
+        font-size: 16px;
+      }
+      .action-link {
+        display: block;
+        margin: 12px 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <svg class="logo-mark" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 8,4 H 24 Q 29,4 29,9 V 14 H 20 V 28 Q 20,32 16,32 Q 12,32 12,28 V 14 H 3 V 9 Q 3,4 8,4 Z" fill="#F97316"/>
+      </svg>
+      <h1 class="wordmark">tinai<span class="wordmark-suffix">.cloud</span></h1>
+    </div>
+
+    <!-- Status Banner -->
+    <div class="status-banner">
+      <div class="status-icon">✅</div>
+      <h2 class="status-title">Deployment Successful</h2>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+      <div class="app-name">{{appName}}</div>
+      <div class="deploy-id">Deploy ID: {{deploymentId}}</div>
+
+      <div class="deploy-info">
+        <div class="info-row">
+          <span class="info-label">Branch</span>
+          <span class="info-value">{{branch}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Commit</span>
+          <span class="info-value">{{commitShort}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Build Time</span>
+          <span class="info-value">{{buildDuration}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Deployed At</span>
+          <span class="info-value">{{deployedAt}}</span>
+        </div>
+      </div>
+
+      <div class="live-url-box">
+        <div class="live-url-label">Your app is live at</div>
+        <a href="{{liveUrl}}" class="live-url">{{liveUrl}}</a>
+        <a href="{{liveUrl}}" class="visit-button">Visit Application →</a>
+      </div>
+
+      <div class="action-links">
+        <a href="{{logsUrl}}" class="action-link">📋 View Logs</a>
+        <a href="{{metricsUrl}}" class="action-link">📊 View Metrics</a>
+        <a href="{{dashboardUrl}}" class="action-link">⚙️ Settings</a>
+      </div>
+
+      <div class="next-steps">
+        <h3>Next Steps</h3>
+        <ul>
+          <li>Configure your custom domain in the dashboard</li>
+          <li>Set up environment variables for production</li>
+          <li>Enable auto-deployments for your main branch</li>
+          <li>Monitor your app's performance and logs</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <p class="footer-text">© 2025 TinAI Cloud. All rights reserved.</p>
+      <p class="footer-text">
+        <a href="{{unsubscribeUrl}}" class="unsubscribe">Unsubscribe</a> |
+        <a href="{{preferencesUrl}}" class="unsubscribe">Email Preferences</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>

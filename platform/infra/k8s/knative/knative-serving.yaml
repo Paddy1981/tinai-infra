@@ -1,0 +1,33 @@
+# Knative Serving — scale-to-zero serverless for tenant functions
+# Install operator first: kubectl apply -f https://github.com/knative/operator/releases/latest/download/operator.yaml
+apiVersion: operator.knative.dev/v1beta1
+kind: KnativeServing
+metadata:
+  name: knative-serving
+  namespace: knative-serving
+spec:
+  version: "1.13"
+  ingress:
+    kourier:
+      enabled: true
+  config:
+    config-autoscaler:
+      scale-to-zero-grace-period: "30s"
+      scale-to-zero-pod-retention-period: "0s"
+      initial-scale: "1"
+      min-scale: "0"
+      max-scale: "10"
+      target-burst-capacity: "200"
+    config-defaults:
+      revision-timeout-seconds: "60"
+      max-revision-timeout-seconds: "300"
+    config-domain:
+      fn.tinai.cloud: ""
+    config-gc:
+      retain-since-create-time: "48h"
+      retain-since-last-active-time: "15h"
+      min-non-active-revisions: "1"
+      max-non-active-revisions: "5"
+    config-features:
+      multi-container: "enabled"
+      init-containers: "enabled"

@@ -1,0 +1,18 @@
+apiVersion: v2
+name: tinai-forge
+description: TinAI Forge - Automated White-Label Pipeline
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - tinai
+  - forge
+  - white-label
+  - pipeline
+home: https://tinai.cloud
+sources:
+  - https://github.com/tinai/tinai-forge
+maintainers:
+  - name: TinAI
+    email: admin@tinai.cloud
+dependencies: []

@@ -1,0 +1,8 @@
+ARG UPSTREAM_VERSION=2.7.3
+FROM woodpeckerci/woodpecker-server:${UPSTREAM_VERSION}
+
+COPY config/server.env /etc/woodpecker/server.env
+
+LABEL tinai.product="tinai-pipelines" \
+      tinai.upstream="woodpecker" \
+      tinai.version="1.0.0"

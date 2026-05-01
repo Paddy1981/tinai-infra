@@ -1,0 +1,59 @@
+{{template "base/head_navbar" .}}
+<title>{{if .Title}}{{.Title}} - {{end}}TinAI Repos</title>
+<link rel="icon" href="{{AssetUrlPrefix}}/img/tinai-favicon.png" type="image/png"/>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="TinAI Repos - Enterprise Git Repository Management">
+<meta name="author" content="TinAI">
+<meta name="theme-color" content="#0F172A">
+
+<style>
+:root {
+  --tinai-navy: #0F172A;
+  --tinai-cyan: #06B6D4;
+  --tinai-secondary: #0891B2;
+  --tinai-white: #FFFFFF;
+  --tinai-light-gray: #F1F5F9;
+}
+
+/* Override Forgejo brand colors */
+.navbar, .ui.top.attached.header {
+  background-color: var(--tinai-navy) !important;
+  border-bottom: 2px solid var(--tinai-cyan);
+}
+
+.navbar .brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--tinai-cyan) !important;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.ui.primary.button, .btn-primary {
+  background-color: var(--tinai-cyan) !important;
+  border-color: var(--tinai-secondary) !important;
+  color: var(--tinai-navy) !important;
+}
+
+.ui.primary.button:hover, .btn-primary:hover {
+  background-color: var(--tinai-secondary) !important;
+}
+
+a {
+  color: var(--tinai-cyan);
+}
+
+a:hover {
+  color: var(--tinai-secondary);
+}
+
+.logo img {
+  max-height: 32px;
+}
+
+/* Forgejo default head includes */
+</style>
+
+{{template "base/head_script" .}}

@@ -1,0 +1,91 @@
+# Woodpecker pipeline for K3s local builds using Kaniko + hostPath import
+#
+# This pipeline builds with Kaniko and writes the image tar to a hostPath
+# volume, then imports it directly into K3s containerd via a privileged
+# init step. This avoids needing a container registry entirely.
+#
+# Requirements:
+#   - Directory /var/lib/tinai/images/ must exist on the K3s node
+#   - The import step needs a privileged container with access to the
+#     containerd socket (hostPath /run/k3s/containerd/containerd.sock)
+
+when:
+  event: [push, pull_request]
+
+steps:
+  - name: build
+    image: gcr.io/kaniko-project/executor:v1.23.2-debug
+    commands:
+      - /kaniko/executor
+        --context=dir:///woodpecker/src
+        --dockerfile=Dockerfile
+        --no-push
+        --tar-path=/images/${CI_REPO_NAME}-${CI_COMMIT_SHA:0:8}.tar
+        --destination=docker.io/tinai/${CI_REPO_NAME}:${CI_COMMIT_SHA:0:8}
+        --cache=false
+        --single-snapshot
+    backend_options:
+      kubernetes:
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: "2"
+            memory: 2Gi
+        volumes:
+          - name: images
+            host_path:
+              path: /var/lib/tinai/images
+              type: DirectoryOrCreate
+        volume_mounts:
+          - name: images
+            mount_path: /images
+
+  - name: import
+    image: rancher/k3s:v1.31.4-k3s1
+    commands:
+      - |
+        IMAGE_TAR="/images/${CI_REPO_NAME}-${CI_COMMIT_SHA:0:8}.tar"
+        echo "Importing ${IMAGE_TAR} into K3s containerd..."
+        ctr --address /run/k3s/containerd/containerd.sock \
+            --namespace k8s.io \
+            images import "${IMAGE_TAR}"
+        echo "Cleaning up tar..."
+        rm -f "${IMAGE_TAR}"
+        echo "Image imported successfully."
+    backend_options:
+      kubernetes:
+        securityContext:
+          privileged: true
+        volumes:
+          - name: images
+            host_path:
+              path: /var/lib/tinai/images
+              type: DirectoryOrCreate
+          - name: containerd-sock
+            host_path:
+              path: /run/k3s/containerd/containerd.sock
+              type: Socket
+        volume_mounts:
+          - name: images
+            mount_path: /images
+          - name: containerd-sock
+            mount_path: /run/k3s/containerd/containerd.sock
+
+  - name: deploy
+    image: bitnami/kubectl:1.31
+    commands:
+      - |
+        TAG="${CI_COMMIT_SHA:0:8}"
+        IMAGE="docker.io/tinai/${CI_REPO_NAME}:${TAG}"
+        NAMESPACE="tinai-apps"
+
+        echo "Deploying ${IMAGE} to ${NAMESPACE}..."
+        kubectl set image deployment/${CI_REPO_NAME} \
+          ${CI_REPO_NAME}=${IMAGE} \
+          -n ${NAMESPACE}
+        kubectl rollout status deployment/${CI_REPO_NAME} \
+          -n ${NAMESPACE} \
+          --timeout=180s
+        echo "Rollout complete: ${CI_REPO_NAME}:${TAG}"

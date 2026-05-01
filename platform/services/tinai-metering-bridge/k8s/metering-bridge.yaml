@@ -1,0 +1,215 @@
+# k8s/metering-bridge.yaml
+# Tinai Metering Bridge — K3s deployment
+#
+# CHOICE: Deployment vs CronJob
+#   This uses a Deployment (long-running pod) rather than a CronJob because:
+#   1. The bridge manages its own schedule via setTimeout — more control over window tracking
+#   2. CronJobs have cold-start overhead every 15 min (image pull, NATS reconnect)
+#   3. The /health endpoint requires a persistent pod for K8s probes
+#   4. Window continuity: a Deployment remembers the last window end; a CronJob must
+#      look up the last event timestamp from Lago API or a PVC on each start.
+#
+#   If you later want a CronJob variant (e.g. for cost), see the commented section at bottom.
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: billing
+  labels:
+    app.kubernetes.io/managed-by: argocd
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: metering-bridge-config
+  namespace: billing
+data:
+  PROMETHEUS_URL: "http://prometheus-server.monitoring.svc.cluster.local:9090"
+  LAGO_API_URL: "http://lago-api.billing.svc.cluster.local:3000"
+  NATS_SERVERS: "nats://nats.core.svc.cluster.local:4222"
+  NATS_AUDIT_SUBJECT: "tinai.metering.audit"
+  NATS_DLQ_SUBJECT: "tinai.metering.dlq"
+  TENANT_NS_PREFIX: "tenant-"
+  EXCLUDE_NAMESPACES: "kube-system,kube-public,monitoring,cert-manager,argo,core,billing"
+  METERING_INTERVAL_MS: "900000"   # 15 minutes
+  METERING_LOOKBACK_MS: "1200000"  # 20 minutes (startup gap buffer)
+  LAGO_BATCH_SIZE: "100"
+  LAGO_RETRY_ATTEMPTS: "3"
+  LAGO_RETRY_DELAY_MS: "2000"
+  LOG_LEVEL: "info"
+  PORT: "3100"
+  NODE_ENV: "production"
+
+---
+# Secret — create this manually or via Vault Agent sidecar
+# kubectl create secret generic metering-bridge-secrets \
+#   --from-literal=LAGO_API_KEY=your-lago-api-key \
+#   --from-literal=ADMIN_TOKEN=your-admin-token \
+#   -n billing
+apiVersion: v1
+kind: Secret
+metadata:
+  name: metering-bridge-secrets
+  namespace: billing
+type: Opaque
+# stringData:
+#   LAGO_API_KEY: "your-lago-api-key-here"
+#   ADMIN_TOKEN: "your-admin-token-here"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metering-bridge
+  namespace: billing
+  labels:
+    app: metering-bridge
+    app.kubernetes.io/component: billing
+    app.kubernetes.io/part-of: tinai-platform
+spec:
+  replicas: 1  # Exactly 1 — multiple replicas would double-count events
+  strategy:
+    type: Recreate  # Not RollingUpdate — prevents 2 pods running simultaneously
+  selector:
+    matchLabels:
+      app: metering-bridge
+  template:
+    metadata:
+      labels:
+        app: metering-bridge
+      annotations:
+        # Force pod restart when ConfigMap changes
+        checksum/config: "{{ include (print $.Template.BasePath \"/configmap.yaml\") . | sha256sum }}"
+    spec:
+      serviceAccountName: metering-bridge  # See ServiceAccount below
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: metering-bridge
+          image: harbor.tinai.cloud/tinai/metering-bridge:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3100
+          envFrom:
+            - configMapRef:
+                name: metering-bridge-config
+            - secretRef:
+                name: metering-bridge-secrets
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 15  # Wait for first run to complete
+            periodSeconds: 60
+            failureThreshold: 2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: metering-bridge
+  namespace: billing
+spec:
+  selector:
+    app: metering-bridge
+  ports:
+    - name: http
+      port: 3100
+      targetPort: http
+
+---
+# ServiceAccount with minimal permissions
+# The bridge only needs to read namespace labels from Prometheus,
+# NOT from the K8s API — so no ClusterRole needed.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: metering-bridge
+  namespace: billing
+automountServiceAccountToken: false
+
+---
+# NetworkPolicy — restrict bridge to only talk to Prometheus, Lago, NATS
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: metering-bridge
+  namespace: billing
+spec:
+  podSelector:
+    matchLabels:
+      app: metering-bridge
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - ports:
+        - port: 3100  # Health server — from kube-apiserver for probes
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - port: 9090  # Prometheus
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: billing
+      ports:
+        - port: 3000  # Lago API
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: core
+      ports:
+        - port: 4222  # NATS
+    - ports:
+        - port: 53    # DNS
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+---
+# ── Optional: Prometheus ServiceMonitor ───────────────────────────────────────
+# Uncomment if you're using kube-prometheus-stack and want to scrape /metrics
+# apiVersion: monitoring.coreos.com/v1
+# kind: ServiceMonitor
+# metadata:
+#   name: metering-bridge
+#   namespace: billing
+# spec:
+#   selector:
+#     matchLabels:
+#       app: metering-bridge
+#   endpoints:
+#     - port: http
+#       path: /metrics
+#       interval: 60s

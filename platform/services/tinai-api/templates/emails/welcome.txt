@@ -1,0 +1,38 @@
+Welcome to TinAI Cloud!
+========================
+
+Hi there!
+
+We're excited to have you onboard. TinAI Cloud is your powerful platform for deploying applications, managing teams, and scaling with confidence.
+
+Quick Start Guide
+-----------------
+
+1. Install the TinAI CLI
+   npm install -g @tinai/cli
+
+2. Connect your account
+   Run: tinai login
+
+3. Deploy your first app
+   Navigate to your project and run: tinai deploy
+
+4. Manage from the dashboard
+   Monitor deployments, configure domains, and manage your team
+
+Get Started: {{dashboardUrl}}
+
+Helpful Resources
+-----------------
+• Getting Started Guide: {{docsUrl}}/getting-started
+• CLI Reference: {{docsUrl}}/cli
+• Deployment Options: {{docsUrl}}/deployments
+• API Documentation: {{docsUrl}}/api
+
+Need Help?
+----------
+Our team is here for you: {{supportEmail}}
+
+---
+© 2025 TinAI Cloud. All rights reserved.
+Unsubscribe: {{unsubscribeUrl}}

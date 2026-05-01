@@ -1,0 +1,61 @@
+# MinIO Helm values — tinai-system namespace
+#
+# Install:
+#   helm repo add minio https://charts.min.io/
+#   helm install minio minio/minio -n tinai-system -f minio-values.yaml \
+#     --set rootPassword=<password>
+#
+# Bucket strategy:
+#   Per-tenant buckets are created automatically by tinai-api at app registration
+#   time via the MinIO S3-compatible API. Bucket naming convention:
+#   "tinai-<tenant-id>-<app-slug>"
+#
+# Encryption:
+#   Server-side encryption is AES-256 SSE-S3, keyed via MINIO_KMS_SECRET_KEY
+#   injected from the minio-kms-secret Kubernetes Secret. The secret must be
+#   created before installing this chart:
+#     kubectl create secret generic minio-kms-secret \
+#       --from-literal=key=<32-byte-hex-key> -n tinai-system
+#
+# Audit logging:
+#   MinIO audit/access logs are shipped to the Tinai audit pipeline via the
+#   MINIO_AUDIT_WEBHOOK_* environment variables (configure separately per
+#   region). The audit pipeline stores logs in the regional object store with
+#   a 90-day retention policy per DPDP Act 2023 / PDPPL / PDPL requirements.
+
+mode: standalone
+
+rootUser: "minio-admin"
+rootPassword: ""  # Set via: --set rootPassword=<password> at install time
+
+persistence:
+  enabled: true
+  size: 50Gi
+
+resources:
+  requests:
+    memory: 512Mi
+    cpu: 200m
+  limits:
+    memory: 1Gi
+    cpu: "1"
+
+service:
+  type: ClusterIP
+  port: 9000
+
+consoleService:
+  type: ClusterIP
+  port: 9001
+
+environment:
+  MINIO_BROWSER: "on"
+  MINIO_SITE_REGION: "in-delhi"  # overridden per region
+
+# Server-side encryption via KMS
+extraEnv:
+  - name: MINIO_KMS_SECRET_KEY
+    valueFrom:
+      secretKeyRef:
+        name: minio-kms-secret
+        key: key

@@ -1,0 +1,63 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: tinai-backup
+  namespace: tinai-system
+  labels:
+    tinai.cloud/component: backup
+spec:
+  # Run daily at 02:00 UTC
+  schedule: "0 2 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            tinai.cloud/component: backup
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: registry.e2enetworks.net/tinai/tinai-backup:latest
+              imagePullPolicy: Always
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: tinai-backup-secrets
+                      key: database-url
+                - name: MINIO_ENDPOINT
+                  value: "minio.tinai-system.svc.cluster.local:9000"
+                - name: MINIO_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-credentials
+                      key: rootUser
+                      optional: true
+                - name: MINIO_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-credentials
+                      key: rootPassword
+                      optional: true
+                - name: MINIO_BUCKET
+                  value: "tinai-backups"
+                - name: BACKUP_RETENTION_DAYS
+                  value: "30"
+                - name: PROMETHEUS_PUSHGATEWAY_URL
+                  value: "http://prometheus-pushgateway.monitoring.svc.cluster.local:9091"
+                - name: REGION
+                  valueFrom:
+                    configMapKeyRef:
+                      name: tinai-region-config
+                      key: REGION
+                      optional: true
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi

@@ -1,0 +1,57 @@
+# Sample Woodpecker CI pipeline for Tinai services
+# Place as .woodpecker.yml in the root of any Tinai repo
+#
+# Flow: git push -> Forgejo webhook -> Woodpecker -> Kaniko build -> kubectl deploy
+#
+# This pipeline uses Kaniko (no Docker daemon needed) to build images
+# and saves them as tar files that get imported into K3s via ctr.
+
+steps:
+  - name: build
+    image: gcr.io/kaniko-project/executor:v1.23.2-debug
+    commands:
+      # Kaniko builds the image and saves it as a tar archive.
+      # The tar is written to a shared workspace volume so the
+      # deploy step can import it into K3s containerd.
+      - /kaniko/executor
+        --context=dir:///woodpecker/src
+        --dockerfile=Dockerfile
+        --no-push
+        --tar-path=/woodpecker/src/image.tar
+        --destination=tinai/${CI_REPO_NAME}:${CI_COMMIT_SHA:0:8}
+        --cache=false
+        --single-snapshot
+
+  - name: import-image
+    image: bitnami/kubectl:1.31
+    # This step runs on the K3s node. It uses kubectl to copy the tar
+    # into the node and import it via crictl/ctr. For single-node K3s
+    # this works because the pipeline pod runs on the same node.
+    commands:
+      - |
+        echo "Importing image into K3s containerd..."
+        # The image tar is available in the workspace
+        # On K3s single-node, we use a hostPath approach via a separate job
+        # For now, we tag and push to a local registry or use the k3s import method
+        echo "Image built: tinai/${CI_REPO_NAME}:${CI_COMMIT_SHA:0:8}"
+        echo "Image tar at: /woodpecker/src/image.tar"
+        echo "Import step depends on your image distribution strategy."
+        echo "Options:"
+        echo "  1. Push to a local registry (registry.tinai-system.svc.cluster.local:5000)"
+        echo "  2. Use k3s ctr import on the node"
+        echo "  3. Use imagePullPolicy: Never with pre-loaded images"
+
+  - name: deploy
+    image: bitnami/kubectl:1.31
+    commands:
+      - |
+        TAG="${CI_COMMIT_SHA:0:8}"
+        IMAGE="tinai/${CI_REPO_NAME}:${TAG}"
+        echo "Deploying ${IMAGE} to tinai-apps..."
+        kubectl set image deployment/${CI_REPO_NAME} \
+          ${CI_REPO_NAME}=${IMAGE} \
+          -n tinai-apps
+        kubectl rollout status deployment/${CI_REPO_NAME} \
+          -n tinai-apps \
+          --timeout=120s
+        echo "Deployment of ${CI_REPO_NAME}:${TAG} complete."

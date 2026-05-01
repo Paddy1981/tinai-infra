@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <!--
+    Tinai.cloud — T-mark (standalone)
+    Saffron #F97316 on transparent background.
+    Works at 16px–512px. Scale via width/height attributes.
+  -->
+  <path
+    d="M 8,4 H 24 Q 29,4 29,9 V 14 H 20 V 28 Q 20,32 16,32 Q 12,32 12,28 V 14 H 3 V 9 Q 3,4 8,4 Z"
+    fill="#F97316"
+  />
+</svg>

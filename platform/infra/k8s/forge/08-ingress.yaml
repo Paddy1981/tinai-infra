@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tinai-forge
+  namespace: tinai-forge
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: tinai-forge-basic-auth
+    nginx.ingress.kubernetes.io/auth-realm: "TinAI Forge - Admin Only"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - forge.tinai.cloud
+      secretName: tinai-forge-tls
+  rules:
+    - host: forge.tinai.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tinai-forge
+                port:
+                  number: 8090

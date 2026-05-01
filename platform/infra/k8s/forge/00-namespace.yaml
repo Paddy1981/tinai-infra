@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tinai-forge
+  labels:
+    app.kubernetes.io/managed-by: tinai-forge
+    kubernetes.io/metadata.name: tinai-forge
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tinai-forge-test
+  labels:
+    app.kubernetes.io/managed-by: tinai-forge
+    kubernetes.io/metadata.name: tinai-forge-test
+    purpose: ephemeral-testing

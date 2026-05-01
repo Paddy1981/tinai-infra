@@ -1,0 +1,97 @@
+---
+# One-time Kubernetes Job to register Woodpecker CI webhooks in Forgejo.
+# Pre-requisite: create the secret before running the Job:
+#
+#   kubectl create secret generic woodpecker-hook-reg-secret \
+#     --namespace woodpecker \
+#     --from-literal=FORGEJO_TOKEN=<your-admin-token> \
+#     --from-literal=WOODPECKER_WEBHOOK_SECRET=<your-webhook-secret> \
+#     --from-literal=FORGEJO_URL=https://git.tinai.cloud
+#
+# Then apply: kubectl apply -f k8s/woodpecker/register-hooks-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: register-woodpecker-hooks
+  namespace: woodpecker
+  labels:
+    app.kubernetes.io/name: register-woodpecker-hooks
+    app.kubernetes.io/component: ci
+spec:
+  ttlSecondsAfterFinished: 600        # clean up pod 10 min after completion
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: register-woodpecker-hooks
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: register-hooks
+          image: alpine/curl:8.7.1
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -euo pipefail
+
+              FORGEJO_URL="${FORGEJO_URL:-https://git.tinai.cloud}"
+              WOODPECKER_HOOK_URL="${WOODPECKER_HOOK_URL:-http://woodpecker-server.woodpecker.svc.cluster.local:8000/hook}"
+              ORG="tinai"
+
+              REPOS="tinai-api tinai-dashboard tinai-gateway tinai-auth tinai-realtime tinai-functions tinai-build-api"
+
+              echo "Forgejo base URL : ${FORGEJO_URL}"
+              echo "Woodpecker hook  : ${WOODPECKER_HOOK_URL}"
+              echo "---------------------------------------------------"
+
+              for REPO in ${REPOS}; do
+                API_PATH="/api/v1/repos/${ORG}/${REPO}/hooks"
+
+                EXISTING=$(curl -sf \
+                  -H "Authorization: token ${FORGEJO_TOKEN}" \
+                  -H "Content-Type: application/json" \
+                  "${FORGEJO_URL}${API_PATH}") || {
+                  echo "[ERROR] ${REPO}: failed to fetch hooks"
+                  continue
+                }
+
+                if echo "${EXISTING}" | grep -qF "${WOODPECKER_HOOK_URL}"; then
+                  echo "[SKIP]    ${REPO}: webhook already exists"
+                  continue
+                fi
+
+                PAYLOAD="{\"type\":\"gitea\",\"config\":{\"url\":\"${WOODPECKER_HOOK_URL}\",\"content_type\":\"json\",\"secret\":\"${WOODPECKER_WEBHOOK_SECRET}\"},\"events\":[\"push\",\"pull_request\"],\"active\":true}"
+
+                RESPONSE=$(curl -sf \
+                  -X POST \
+                  -H "Authorization: token ${FORGEJO_TOKEN}" \
+                  -H "Content-Type: application/json" \
+                  -d "${PAYLOAD}" \
+                  "${FORGEJO_URL}${API_PATH}") && {
+                  HOOK_ID=$(echo "${RESPONSE}" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+                  echo "[CREATED] ${REPO}: hook id=${HOOK_ID}"
+                } || echo "[ERROR]   ${REPO}: failed to create webhook"
+              done
+
+              echo "---------------------------------------------------"
+              echo "Done."
+          env:
+            - name: FORGEJO_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: woodpecker-hook-reg-secret
+                  key: FORGEJO_TOKEN
+            - name: WOODPECKER_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: woodpecker-hook-reg-secret
+                  key: WOODPECKER_WEBHOOK_SECRET
+            - name: FORGEJO_URL
+              valueFrom:
+                secretKeyRef:
+                  name: woodpecker-hook-reg-secret
+                  key: FORGEJO_URL
+                  optional: true
+            - name: WOODPECKER_HOOK_URL
+              value: "http://woodpecker-server.woodpecker.svc.cluster.local:8000/hook"

@@ -1,0 +1,50 @@
+# Helm values for falcosecurity/falcosidekick
+# Receives Falco events and routes them to Slack and PagerDuty
+# Secrets injected via ESO → falco-sidekick-secrets (see falco-sidekick-external-secret.yaml)
+replicaCount: 2
+
+config:
+  slack:
+    webhookurl: ""        # set via FALCOSIDEKICK_CONFIG_SLACK_WEBHOOKURL env (from ESO)
+    channel: "#tinai-security-alerts"
+    outputformat: "all"
+    minimumpriority: "warning"   # warning, error, critical
+    messageformat: |
+      *[tinai-security]* `{{ .Rule }}` on `{{ .Hostname }}`
+      > Priority: *{{ .Priority }}* | Output: {{ .Output }}
+
+  pagerduty:
+    routingkey: ""        # set via FALCOSIDEKICK_CONFIG_PAGERDUTY_ROUTINGKEY env (from ESO)
+    minimumpriority: "error"     # only page on error/critical
+
+  customfields:
+    environment: "production"
+    platform: "tinai.cloud"
+
+  # Suppress noisy low-priority events from reaching Slack
+  alertmanager:
+    minimumpriority: "warning"
+
+extraEnv:
+  - name: FALCOSIDEKICK_CONFIG_SLACK_WEBHOOKURL
+    valueFrom:
+      secretKeyRef:
+        name: falco-sidekick-secrets
+        key: slack_webhook_url
+  - name: FALCOSIDEKICK_CONFIG_PAGERDUTY_ROUTINGKEY
+    valueFrom:
+      secretKeyRef:
+        name: falco-sidekick-secrets
+        key: pagerduty_routing_key
+
+service:
+  type: ClusterIP
+  port: 2801
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi

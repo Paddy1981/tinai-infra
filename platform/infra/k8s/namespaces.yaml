@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tinai-system
+  labels:
+    tinai.cloud/tier: system
+    tinai.cloud/region: "IN"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tinai-build
+  labels:
+    tinai.cloud/tier: build
+    tinai.cloud/region: "IN"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tinai-staging
+  labels:
+    tinai.cloud/tier: staging
+    tinai.cloud/region: "IN"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tinai-prod
+  labels:
+    tinai.cloud/tier: prod
+    tinai.cloud/region: "IN"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tinai-staging-qa
+  labels:
+    tinai.cloud/env: staging
+    tinai.cloud/region: QA
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tinai-prod-qa
+  labels:
+    tinai.cloud/env: prod
+    tinai.cloud/region: QA
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tinai-staging-ae
+  labels:
+    tinai.cloud/env: staging
+    tinai.cloud/region: AE
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tinai-prod-ae
+  labels:
+    tinai.cloud/env: prod
+    tinai.cloud/region: AE
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    tinai.cloud/component: monitoring
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tinai-functions
+  labels:
+    tinai.cloud/component: functions

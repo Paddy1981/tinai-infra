@@ -1,0 +1,191 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tinai-build-sa
+  namespace: tinai-build
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tinai-build-role
+  namespace: tinai-build
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tinai-build-rolebinding
+  namespace: tinai-build
+subjects:
+  - kind: ServiceAccount
+    name: tinai-build-sa
+    namespace: tinai-build
+roleRef:
+  kind: Role
+  name: tinai-build-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# ── tinai-deploy-sa (tinai-system namespace) ─────────────────────────────────
+# Secrets write is scoped to tinai-system only via a Role + RoleBinding.
+# Deployments/services/ingresses also scoped to tinai-system.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tinai-deploy-sa
+  namespace: tinai-system
+---
+# Namespace-scoped role: manages app workloads and secrets within tinai-system.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tinai-deploy-role
+  namespace: tinai-system
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["services", "configmaps", "secrets", "pods", "pods/log", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tinai-deploy-rolebinding
+  namespace: tinai-system
+subjects:
+  - kind: ServiceAccount
+    name: tinai-deploy-sa
+    namespace: tinai-system
+roleRef:
+  kind: Role
+  name: tinai-deploy-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# Minimal ClusterRole — read-only on Namespaces only.
+# Required for multi-tenant provisioning (listing/watching tenant namespaces).
+# No secrets or write access of any kind.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tinai-namespace-reader
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tinai-namespace-reader-binding
+subjects:
+  - kind: ServiceAccount
+    name: tinai-deploy-sa
+    namespace: tinai-system
+roleRef:
+  kind: ClusterRole
+  name: tinai-namespace-reader
+  apiGroup: rbac.authorization.k8s.io
+---
+# ClusterRole for PR preview namespace management.
+# The build-api SA needs to create/delete preview-{app}-pr{N} namespaces.
+# Scoped to only namespaces labelled tinai.cloud/tier=preview via RBAC label selectors
+# (enforced by admission webhook in production; ClusterRole is still minimal).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tinai-preview-ns-manager
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tinai-preview-ns-manager-binding
+subjects:
+  - kind: ServiceAccount
+    name: tinai-build-sa
+    namespace: tinai-build
+roleRef:
+  kind: ClusterRole
+  name: tinai-preview-ns-manager
+  apiGroup: rbac.authorization.k8s.io
+---
+# Read-only role for observability/audit tooling — no write access anywhere.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tinai-readonly-role
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tinai-readonly-sa
+  namespace: tinai-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tinai-readonly-rolebinding
+subjects:
+  - kind: ServiceAccount
+    name: tinai-readonly-sa
+    namespace: tinai-system
+roleRef:
+  kind: ClusterRole
+  name: tinai-readonly-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# ServiceAccount for the functions runner (in tinai-system where the deployment lives)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tinai-functions-sa
+  namespace: tinai-system
+---
+# ClusterRole: functions runner needs to create/manage tenant fn namespaces and jobs within them
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tinai-functions-runner
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch", "create"]
+  - apiGroups: [""]
+    resources: ["configmaps", "pods", "pods/log"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tinai-functions-runner-binding
+subjects:
+  - kind: ServiceAccount
+    name: tinai-functions-sa
+    namespace: tinai-system
+roleRef:
+  kind: ClusterRole
+  name: tinai-functions-runner
+  apiGroup: rbac.authorization.k8s.io

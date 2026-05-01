@@ -1,0 +1,111 @@
+# ServiceMonitor resources for all Tinai core services
+# Applied in namespace: monitoring (where kube-prometheus-stack is deployed)
+# Each monitor scrapes /metrics every 15 seconds.
+#
+# Prerequisite: each service must have a matching Kubernetes Service with the
+# label `tinai.cloud/monitored: "true"` and expose a port named "metrics".
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: tinai-api
+  namespace: monitoring
+  labels:
+    tinai.cloud/component: service-monitor
+spec:
+  selector:
+    matchLabels:
+      app: tinai-api
+  namespaceSelector:
+    matchNames:
+      - tinai-system
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: tinai-build-api
+  namespace: monitoring
+  labels:
+    tinai.cloud/component: service-monitor
+spec:
+  selector:
+    matchLabels:
+      app: tinai-build-api
+  namespaceSelector:
+    matchNames:
+      - tinai-system
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: tinai-usage
+  namespace: monitoring
+  labels:
+    tinai.cloud/component: service-monitor
+spec:
+  selector:
+    matchLabels:
+      app: tinai-usage
+  namespaceSelector:
+    matchNames:
+      - tinai-system
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: tinai-realtime
+  namespace: monitoring
+  labels:
+    tinai.cloud/component: service-monitor
+spec:
+  selector:
+    matchLabels:
+      app: tinai-realtime
+  namespaceSelector:
+    matchNames:
+      - tinai-system
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: tinai-functions
+  namespace: monitoring
+  labels:
+    tinai.cloud/component: service-monitor
+spec:
+  selector:
+    matchLabels:
+      app: tinai-functions
+  namespaceSelector:
+    matchNames:
+      - tinai-functions
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s

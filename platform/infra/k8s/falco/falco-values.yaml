@@ -1,0 +1,33 @@
+# Falco — eBPF-based runtime threat detection
+# helm install falco falcosecurity/falco -f falco-values.yaml -n falco --create-namespace
+driver:
+  kind: ebpf   # modern eBPF driver — no kernel module needed
+
+falco:
+  grpc:
+    enabled: true
+  grpc_output:
+    enabled: true
+  json_output: true
+  json_include_output_property: true
+  log_level: info
+  http_output:
+    enabled: true
+    url: "http://falco-falcosidekick.tinai-system.svc.cluster.local:2801/"
+
+  rules_file:
+    - /etc/falco/falco_rules.yaml
+    - /etc/falco/falco_rules.local.yaml
+
+falcoctl:
+  artifact:
+    follow:
+      enabled: true   # auto-update rules
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1024Mi

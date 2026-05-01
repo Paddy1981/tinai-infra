@@ -1,0 +1,41 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: tle-ingest
+  namespace: tinai-system
+  labels:
+    app: tle-ingest
+    component: space-data
+spec:
+  schedule: "0 */6 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app: tle-ingest
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: tle-ingest
+              image: registry.e2enetworks.net/tinai/tle-ingest:latest
+              imagePullPolicy: Never
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: tinai-space-db
+                      key: DATABASE_URL
+                - name: TLE_URL
+                  value: "https://celestrak.org/NORAD/elements/gp.php?GROUP=resource&FORMAT=tle"
+              resources:
+                requests:
+                  cpu: "10m"
+                  memory: "32Mi"
+                limits:
+                  cpu: "100m"
+                  memory: "64Mi"

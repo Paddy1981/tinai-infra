@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tinai-forge
+  namespace: tinai-forge
+  labels:
+    app: tinai-forge
+    app.kubernetes.io/name: tinai-forge
+    app.kubernetes.io/component: forge-engine
+spec:
+  replicas: 1  # Single replica - forge engine is a singleton
+  selector:
+    matchLabels:
+      app: tinai-forge
+  template:
+    metadata:
+      labels:
+        app: tinai-forge
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: tinai-forge
+      containers:
+        - name: forge
+          image: registry.e2enetworks.net/tinai/tinai-forge:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8090
+              name: http
+          env:
+            - name: FORGE_DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: tinai-forge-config
+                  key: FORGE_DB_URL
+            - name: FORGE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: tinai-forge-config
+                  key: FORGE_API_KEY
+            - name: FORGE_GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: tinai-forge-config
+                  key: FORGE_GITHUB_TOKEN
+            - name: TINAI_API_URL
+              valueFrom:
+                secretKeyRef:
+                  name: tinai-forge-config
+                  key: TINAI_API_URL
+                  optional: true
+          envFrom:
+            - configMapRef:
+                name: tinai-forge-config
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8090
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8090
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      imagePullSecrets:
+        - name: tinai-registry-credentials

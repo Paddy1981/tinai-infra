@@ -1,0 +1,15 @@
+# CloudNativePG Operator
+# helm install cnpg cloudnative-pg/cloudnative-pg \
+#   -f operator-values.yaml -n cnpg-system --create-namespace
+replicaCount: 1
+
+monitoring:
+  podMonitorEnabled: true
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 200Mi
+  limits:
+    cpu: 500m
+    memory: 500Mi

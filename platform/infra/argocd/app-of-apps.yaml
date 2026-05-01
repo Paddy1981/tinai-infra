@@ -1,0 +1,24 @@
+# Root Application — manages all child Applications.
+# Apply once manually: kubectl apply -f argocd/app-of-apps.yaml -n argocd
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tinai-root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: tinai
+  source:
+    repoURL: https://git.tinai.cloud/tinai-admin/tinai-infra.git
+    targetRevision: main
+    path: argocd/apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

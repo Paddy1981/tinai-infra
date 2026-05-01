@@ -1,0 +1,11 @@
+# Kyverno — Policy as Code
+# helm install kyverno kyverno/kyverno -f kyverno-values.yaml -n kyverno --create-namespace
+replicaCount: 1
+admissionController:
+  replicas: 1
+backgroundController:
+  replicas: 1
+cleanupController:
+  replicas: 1
+reportsController:
+  replicas: 1

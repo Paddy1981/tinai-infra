@@ -1,0 +1,52 @@
+replicaCount: 1
+
+image:
+  repository: registry.e2enetworks.net/tinai/tinai-forge
+  tag: latest
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 8090
+
+ingress:
+  enabled: true
+  host: forge.tinai.cloud
+  tlsEnabled: true
+  clusterIssuer: letsencrypt-prod
+
+config:
+  checkIntervalHours: 6
+  autoBuildPatch: true
+  autoBuildMinor: false
+  registryHost: registry.e2enetworks.net
+  registryProject: tinai
+  prometheusURL: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+
+database:
+  url: ""  # Set via --set or secret
+  secretName: tinai-forge-config
+  secretKey: FORGE_DB_URL
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+forge:
+  # Products to automatically watch and build
+  watchedProducts:
+    - forgejo
+    - woodpecker
+    - grafana
+    - prometheus
+    - loki
+    - minio
+    - cloudnativepg
+    - cert-manager
+    - keda
+    - knative
+    - ingress-nginx

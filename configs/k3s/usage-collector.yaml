@@ -1,0 +1,168 @@
+---
+# usage-collector.yaml
+# CronJob that runs every hour, queries Prometheus for per-app CPU/memory
+# metrics in the tinai-apps namespace, and writes rows into cpu_seconds_log
+# and usage_snapshots so the billing API has data to serve.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: usage-collector
+  namespace: tinai-system
+  labels:
+    app: usage-collector
+    component: billing
+spec:
+  schedule: "0 * * * *"          # top of every hour
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app: usage-collector
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: collector
+              image: postgres:16-alpine
+              env:
+                - name: PGHOST
+                  value: postgres.tinai-system.svc.cluster.local
+                - name: PGPORT
+                  value: "5432"
+                - name: PGDATABASE
+                  value: tinai
+                - name: PGUSER
+                  value: tinai
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: tinai-db-credentials
+                      key: POSTGRES_PASSWORD
+                - name: PROMETHEUS_URL
+                  value: http://prometheus.monitoring.svc.cluster.local:9090
+              command:
+                - /bin/sh
+                - -ec
+                - |
+                  # ------------------------------------------------------------------
+                  # Usage Collector  —  queries Prometheus, writes to PostgreSQL
+                  # ------------------------------------------------------------------
+                  # Install curl (not in postgres:16-alpine by default)
+                  apk add --no-cache -q curl jq >/dev/null 2>&1
+
+                  PROM="${PROMETHEUS_URL}/api/v1/query"
+                  NOW_ISO=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+                  HOUR_AGO=$(date -u -d "@$(($(date +%s) - 3600))" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null \
+                            || date -u -r "$(($(date +%s) - 3600))" +"%Y-%m-%dT%H:%M:%SZ")
+
+                  echo "[usage-collector] window: ${HOUR_AGO} -> ${NOW_ISO}"
+
+                  # ── 1. CPU seconds per pod over the last hour ──────────────────
+                  CPU_QUERY='sum(rate(container_cpu_usage_seconds_total{namespace="tinai-apps"}[1h])) by (pod)'
+                  CPU_JSON=$(curl -sG "${PROM}" --data-urlencode "query=${CPU_QUERY}" 2>/dev/null || echo '{}')
+
+                  # ── 2. Average memory bytes per pod over the last hour ─────────
+                  MEM_QUERY='avg(container_memory_usage_bytes{namespace="tinai-apps"}) by (pod)'
+                  MEM_JSON=$(curl -sG "${PROM}" --data-urlencode "query=${MEM_QUERY}" 2>/dev/null || echo '{}')
+
+                  # ── Helper: strip k8s deployment hash suffix to get app name ───
+                  # e.g. "myapp-6b7f8d9c4-x2k7p" -> "myapp"
+                  strip_hash() {
+                    echo "$1" | sed -E 's/-[a-f0-9]{6,10}-[a-z0-9]{5}$//'
+                  }
+
+                  # ── Parse CPU results and build a map: pod -> cpu_rate ─────────
+                  # cpu_rate is cores/second average; multiply by 3600 for cpu_seconds in the hour window
+                  declare -A CPU_MAP
+                  declare -A MEM_MAP
+                  declare -A APP_CPU     # aggregated per app_name
+                  declare -A APP_MEM
+
+                  # Parse CPU JSON
+                  CPU_COUNT=$(echo "${CPU_JSON}" | jq -r '.data.result | length' 2>/dev/null || echo 0)
+                  echo "[usage-collector] CPU metric results: ${CPU_COUNT}"
+
+                  i=0
+                  while [ "$i" -lt "${CPU_COUNT}" ]; do
+                    POD=$(echo "${CPU_JSON}" | jq -r ".data.result[$i].metric.pod // empty")
+                    VAL=$(echo "${CPU_JSON}" | jq -r ".data.result[$i].value[1] // \"0\"")
+                    if [ -n "${POD}" ]; then
+                      APP=$(strip_hash "${POD}")
+                      # rate() gives per-second average; cpu_seconds = rate * 3600
+                      CPU_SECS=$(echo "${VAL} * 3600" | bc -l 2>/dev/null || echo "0")
+                      # Accumulate per app
+                      PREV=${APP_CPU[$APP]:-0}
+                      APP_CPU[$APP]=$(echo "${PREV} + ${CPU_SECS}" | bc -l 2>/dev/null || echo "${CPU_SECS}")
+                    fi
+                    i=$((i + 1))
+                  done
+
+                  # Parse Memory JSON
+                  MEM_COUNT=$(echo "${MEM_JSON}" | jq -r '.data.result | length' 2>/dev/null || echo 0)
+                  echo "[usage-collector] Memory metric results: ${MEM_COUNT}"
+
+                  i=0
+                  while [ "$i" -lt "${MEM_COUNT}" ]; do
+                    POD=$(echo "${MEM_JSON}" | jq -r ".data.result[$i].metric.pod // empty")
+                    VAL=$(echo "${MEM_JSON}" | jq -r ".data.result[$i].value[1] // \"0\"")
+                    if [ -n "${POD}" ]; then
+                      APP=$(strip_hash "${POD}")
+                      # memory_byte_secs = avg_bytes * 3600
+                      MEM_BSECS=$(echo "${VAL} * 3600" | bc -l 2>/dev/null || echo "0")
+                      PREV=${APP_MEM[$APP]:-0}
+                      APP_MEM[$APP]=$(echo "${PREV} + ${MEM_BSECS}" | bc -l 2>/dev/null || echo "${MEM_BSECS}")
+                    fi
+                    i=$((i + 1))
+                  done
+
+                  # ── Insert into cpu_seconds_log ────────────────────────────────
+                  INSERTED=0
+                  for APP in "${!APP_CPU[@]}"; do
+                    CPU_S=${APP_CPU[$APP]:-0}
+                    MEM_BS=${APP_MEM[$APP]:-0}
+                    # Truncate to integers where needed
+                    MEM_BS_INT=$(printf "%.0f" "${MEM_BS}" 2>/dev/null || echo 0)
+
+                    psql -q -c "
+                      INSERT INTO cpu_seconds_log (app_name, namespace, cpu_seconds, memory_byte_secs, window_start, window_end)
+                      VALUES ('${APP}', 'tinai-apps', ${CPU_S}, ${MEM_BS_INT}, '${HOUR_AGO}', '${NOW_ISO}')
+                    " 2>/dev/null && INSERTED=$((INSERTED + 1))
+                  done
+                  echo "[usage-collector] Inserted ${INSERTED} rows into cpu_seconds_log"
+
+                  # ── Also insert into usage_snapshots (used by /billing/usage/current) ──
+                  SNAP_INSERTED=0
+                  for APP in "${!APP_CPU[@]}"; do
+                    CPU_S=${APP_CPU[$APP]:-0}
+                    # Convert cpu_seconds back to cores (average over the hour)
+                    CPU_CORES=$(echo "${CPU_S} / 3600" | bc -l 2>/dev/null || echo "0")
+                    MEM_BS=${APP_MEM[$APP]:-0}
+                    # Convert memory_byte_secs back to average bytes
+                    MEM_BYTES=$(echo "${MEM_BS} / 3600" | bc -l 2>/dev/null || echo "0")
+                    MEM_BYTES_INT=$(printf "%.0f" "${MEM_BYTES}" 2>/dev/null || echo 0)
+
+                    psql -q -c "
+                      INSERT INTO usage_snapshots (app_name, namespace, cpu_cores, memory_bytes, snapshot_at)
+                      VALUES ('${APP}', 'tinai-apps', ${CPU_CORES}, ${MEM_BYTES_INT}, '${NOW_ISO}')
+                    " 2>/dev/null && SNAP_INSERTED=$((SNAP_INSERTED + 1))
+                  done
+                  echo "[usage-collector] Inserted ${SNAP_INSERTED} rows into usage_snapshots"
+
+                  # ── Fallback: if Prometheus returned nothing, insert a heartbeat ──
+                  if [ "${INSERTED}" -eq 0 ] && [ "${SNAP_INSERTED}" -eq 0 ]; then
+                    echo "[usage-collector] No Prometheus data — no rows inserted (cluster may be idle)"
+                  fi
+
+                  echo "[usage-collector] Done."
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 200m
+                  memory: 128Mi

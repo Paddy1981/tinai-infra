@@ -1,0 +1,356 @@
+# k8s/maintenance.yaml
+# All maintenance services — deployed to the `maintenance` namespace.
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: maintenance
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: maintenance-config
+  namespace: maintenance
+data:
+  PROMETHEUS_URL: "http://prometheus-server.monitoring.svc.cluster.local:9090"
+  LOKI_URL: "http://loki.monitoring.svc.cluster.local:3100"
+  NATS_SERVERS: "nats://nats.core.svc.cluster.local:4222"
+  SMTP_HOST: "stalwart.core.svc.cluster.local"
+  SMTP_PORT: "587"
+  EMAIL_FROM: "ops@tinai.cloud"
+  EMAIL_FROM_NAME: "Tinai Ops"
+  TENANT_NS_PREFIX: "tenant-"
+  HARBOR_URL: "https://harbor.tinai.cloud"
+  GITEA_URL: "https://gitea.tinai.cloud"
+  GITEA_ORG: "tinai"
+  VAULT_ADDR: "http://vault.vault.svc.cluster.local:8200"
+  PG_NAMESPACE: "core"
+  PG_POD_LABEL: "app=postgresql,role=primary"
+  PGBACKREST_STANZA: "tinai-pg"
+  BACKUP_RETENTION_FULL: "7"
+  BACKUP_RETENTION_DIFF: "14"
+  BACKUP_TYPE: "full"
+  ORPHAN_GRACE_DAYS: "7"
+  DRY_RUN: "false"
+  LOG_RETENTION_DAYS: "90"
+  LOG_ARCHIVE_AFTER_DAYS: "30"
+  MINIO_URL: "http://minio.core.svc.cluster.local:9000"
+  MINIO_LOG_BUCKET: "tinai-log-archive"
+  CRASHLOOP_THRESHOLD: "5"
+  PENDING_ALERT_MINS: "30"
+  POLL_INTERVAL_MS: "300000"
+  LOG_LEVEL: "info"
+  NODE_ENV: "production"
+
+---
+# ── 1. Cert Renewal Monitor (CronJob daily 05:00) ────────────────────────────
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cert-renewal
+  namespace: maintenance
+spec:
+  schedule: "0 5 * * *"
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          serviceAccountName: maintenance
+          restartPolicy: OnFailure
+          containers:
+            - name: cert-renewal
+              image: harbor.tinai.cloud/tinai/maintenance:latest
+              command: ["node", "cert-renewal/index.js"]
+              envFrom:
+                - configMapRef: { name: maintenance-config }
+                - secretRef:    { name: maintenance-secrets }
+              resources:
+                requests: { cpu: "50m",  memory: "64Mi"  }
+                limits:   { cpu: "200m", memory: "128Mi" }
+
+---
+# ── 2. DB Backup (CronJob daily 02:00) ───────────────────────────────────────
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: db-backup
+  namespace: maintenance
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 3600
+      template:
+        spec:
+          serviceAccountName: maintenance
+          restartPolicy: OnFailure
+          containers:
+            - name: db-backup
+              image: harbor.tinai.cloud/tinai/maintenance:latest
+              command: ["node", "db-backup/index.js"]
+              envFrom:
+                - configMapRef: { name: maintenance-config }
+                - secretRef:    { name: maintenance-secrets }
+              resources:
+                requests: { cpu: "100m", memory: "128Mi" }
+                limits:   { cpu: "500m", memory: "256Mi" }
+
+---
+# ── 3. DB Backup Verify (CronJob Sunday 03:00) ───────────────────────────────
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: db-backup-verify
+  namespace: maintenance
+spec:
+  schedule: "0 3 * * 0"
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 7200
+      template:
+        spec:
+          serviceAccountName: maintenance
+          restartPolicy: Never
+          containers:
+            - name: db-backup-verify
+              image: harbor.tinai.cloud/tinai/maintenance:latest
+              command: ["node", "db-backup/verify.js"]
+              env:
+                - name: VERIFY_NAMESPACE
+                  value: "backup-verify"
+                - name: VERIFY_POD_NAME
+                  value: "pg-restore-test"
+              envFrom:
+                - configMapRef: { name: maintenance-config }
+                - secretRef:    { name: maintenance-secrets }
+              resources:
+                requests: { cpu: "100m", memory: "128Mi" }
+                limits:   { cpu: "500m", memory: "512Mi" }
+
+---
+# ── 4. Image Updater (CronJob daily 04:00) ───────────────────────────────────
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: image-updater
+  namespace: maintenance
+spec:
+  schedule: "0 4 * * *"
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          serviceAccountName: maintenance
+          restartPolicy: OnFailure
+          containers:
+            - name: image-updater
+              image: harbor.tinai.cloud/tinai/maintenance:latest
+              command: ["node", "image-updater/index.js"]
+              envFrom:
+                - configMapRef: { name: maintenance-config }
+                - secretRef:    { name: maintenance-secrets }
+              resources:
+                requests: { cpu: "50m",  memory: "128Mi" }
+                limits:   { cpu: "200m", memory: "256Mi" }
+
+---
+# ── 5. Storage Cleanup (CronJob Sunday 04:00) ────────────────────────────────
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: storage-cleanup
+  namespace: maintenance
+spec:
+  schedule: "0 4 * * 0"
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          serviceAccountName: maintenance
+          restartPolicy: OnFailure
+          containers:
+            - name: storage-cleanup
+              image: harbor.tinai.cloud/tinai/maintenance:latest
+              command: ["node", "storage-cleanup/index.js"]
+              envFrom:
+                - configMapRef: { name: maintenance-config }
+                - secretRef:    { name: maintenance-secrets }
+              resources:
+                requests: { cpu: "50m",  memory: "64Mi"  }
+                limits:   { cpu: "200m", memory: "128Mi" }
+
+---
+# ── 6. Secret Rotation (CronJob monthly 1st 01:00) ───────────────────────────
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: secret-rotation
+  namespace: maintenance
+spec:
+  schedule: "0 1 1 * *"
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 0   # Never retry rotation — too risky
+      template:
+        spec:
+          serviceAccountName: maintenance
+          restartPolicy: Never
+          containers:
+            - name: secret-rotation
+              image: harbor.tinai.cloud/tinai/maintenance:latest
+              command: ["node", "secret-rotation/index.js"]
+              envFrom:
+                - configMapRef: { name: maintenance-config }
+                - secretRef:    { name: maintenance-secrets }
+              resources:
+                requests: { cpu: "50m",  memory: "64Mi"  }
+                limits:   { cpu: "200m", memory: "128Mi" }
+
+---
+# ── 7. Log Rotation (CronJob Sunday 02:00) ───────────────────────────────────
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: log-rotation
+  namespace: maintenance
+spec:
+  schedule: "0 2 * * 0"
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 7200
+      template:
+        spec:
+          serviceAccountName: maintenance
+          restartPolicy: OnFailure
+          containers:
+            - name: log-rotation
+              image: harbor.tinai.cloud/tinai/maintenance:latest
+              command: ["node", "log-rotation/index.js"]
+              envFrom:
+                - configMapRef: { name: maintenance-config }
+                - secretRef:    { name: maintenance-secrets }
+              resources:
+                requests: { cpu: "100m", memory: "256Mi" }
+                limits:   { cpu: "500m", memory: "512Mi" }
+
+---
+# ── 8. Self-Healing Monitor (Deployment — always-on) ─────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: self-healing
+  namespace: maintenance
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: self-healing
+  template:
+    metadata:
+      labels:
+        app: self-healing
+    spec:
+      serviceAccountName: maintenance
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+      containers:
+        - name: self-healing
+          image: harbor.tinai.cloud/tinai/maintenance:latest
+          command: ["node", "self-healing/index.js"]
+          ports:
+            - containerPort: 3300
+          env:
+            - name: PORT
+              value: "3300"
+          envFrom:
+            - configMapRef: { name: maintenance-config }
+            - secretRef:    { name: maintenance-secrets }
+          resources:
+            requests: { cpu: "50m",  memory: "64Mi"  }
+            limits:   { cpu: "200m", memory: "256Mi" }
+          livenessProbe:
+            httpGet: { path: /health, port: 3300 }
+            periodSeconds: 60
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: self-healing
+  namespace: maintenance
+spec:
+  selector:
+    app: self-healing
+  ports:
+    - port: 3300
+      targetPort: 3300
+
+---
+# ── RBAC ──────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: maintenance
+  namespace: maintenance
+automountServiceAccountToken: true
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: maintenance
+# WARNING: ClusterRole grants cluster-wide access including secrets in ALL namespaces.
+# K8s RBAC cannot restrict ClusterRole to specific namespaces (that requires per-namespace
+# RoleBindings instead of a ClusterRoleBinding). As a mitigation, all code using this
+# ServiceAccount MUST validate namespaces at the application level — only operating on
+# tenant-* namespaces. See secret-rotation/index.js for the namespace guard.
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "namespaces", "pods", "persistentvolumeclaims", "secrets"]
+    verbs: ["get", "list", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "patch"]
+  - apiGroups: ["cert-manager.io"]
+    resources: ["certificates", "certificaterequests"]
+    verbs: ["get", "list"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: maintenance
+subjects:
+  - kind: ServiceAccount
+    name: maintenance
+    namespace: maintenance
+roleRef:
+  kind: ClusterRole
+  name: maintenance
+  apiGroup: rbac.authorization.k8s.io

@@ -1,0 +1,62 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: tinai
+  namespace: argocd
+spec:
+  description: Tinai Cloud platform
+  sourceRepos:
+    - https://git.tinai.cloud/tinai-admin/tinai-infra.git
+    - https://git.tinai.cloud/tinai-admin/tinai-tenant-operator.git
+    - https://falcosecurity.github.io/charts
+    - '*'
+  destinations:
+    - namespace: tinai-system
+      server: https://kubernetes.default.svc
+    - namespace: tinai-build
+      server: https://kubernetes.default.svc
+    - namespace: tinai-functions
+      server: https://kubernetes.default.svc
+    - namespace: tinai-storage
+      server: https://kubernetes.default.svc
+    - namespace: tinai-databases
+      server: https://kubernetes.default.svc
+    - namespace: tinai-instances
+      server: https://kubernetes.default.svc
+    - namespace: argocd
+      server: https://kubernetes.default.svc
+    - namespace: vault
+      server: https://kubernetes.default.svc
+    - namespace: woodpecker
+      server: https://kubernetes.default.svc
+    - namespace: knative-serving
+      server: https://kubernetes.default.svc
+    - namespace: falco
+      server: https://kubernetes.default.svc
+    - namespace: 'preview-*'
+      server: https://kubernetes.default.svc
+    - namespace: '*'
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+    - group: ''
+      kind: ResourceQuota
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+    - group: cert-manager.io
+      kind: ClusterIssuer
+    - group: external-secrets.io
+      kind: ClusterSecretStore
+    - group: admissionregistration.k8s.io
+      kind: '*'
+    - group: kyverno.io
+      kind: ClusterPolicy
+    - group: kyverno.io
+      kind: ClusterPolicyReport
+  orphanedResources:
+    warn: true

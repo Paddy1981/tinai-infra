@@ -1,0 +1,34 @@
+when:
+  - event: [push, pull_request]
+    branch: [main, master]
+
+steps:
+  generate:
+    image: golang:1.22-alpine
+    commands:
+      - go generate ./...
+
+  test:
+    image: golang:1.22-alpine
+    commands:
+      - go test ./...
+      - go vet ./...
+
+  build:
+    image: gcr.io/kaniko-project/executor:v1.23.0
+    settings:
+      registry: registry.tinai.cloud
+      repo: tinai/tenant-operator
+      tags:
+        - latest
+        - ${CI_COMMIT_SHA:0:8}
+      dockerfile: Dockerfile
+      cache: true
+    when:
+      event: push
+      branch: [main, master]
+    secrets:
+      - source: REGISTRY_USER
+        target: DOCKER_USERNAME
+      - source: REGISTRY_PASS
+        target: DOCKER_PASSWORD

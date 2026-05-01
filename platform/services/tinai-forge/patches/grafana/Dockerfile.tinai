@@ -1,0 +1,27 @@
+ARG UPSTREAM_VERSION=11.3.0
+FROM grafana/grafana:${UPSTREAM_VERSION}
+
+USER root
+
+# Copy TinAI branding assets
+COPY public/img/tinai-fav32.png /usr/share/grafana/public/img/fav32.png
+COPY public/img/tinai-logo.svg /usr/share/grafana/public/img/grafana_icon.svg
+COPY public/img/tinai-logo-large.svg /usr/share/grafana/public/img/grafana_typelogo.svg
+
+# Copy provisioning configuration
+COPY provisioning/ /etc/grafana/provisioning/
+
+# Copy Grafana config patch
+COPY config/grafana.ini.patch /tmp/grafana.ini.patch
+
+# Set permissions
+RUN chown -R grafana:grafana /etc/grafana/provisioning /usr/share/grafana/public/img
+
+USER grafana
+
+ENV GF_APP_MODE=production \
+    GF_PATHS_LOGS=/var/log/grafana
+
+LABEL tinai.product="tinai-insights" \
+      tinai.upstream="grafana" \
+      tinai.version="1.0.0"

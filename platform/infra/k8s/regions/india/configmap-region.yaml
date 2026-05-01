@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tinai-region-config-in
+  namespace: tinai-system
+  labels:
+    tinai.cloud/region: "IN"
+data:
+  REGION: "IN"
+  DC_NAME: "E2E Networks"
+  DC_CITY: "Delhi-NCR"
+  DC_COUNTRY: "India"
+  COMPLIANCE_FRAMEWORK: "DPDP Act 2023 + DPDP Rules 2025"
+  REGULATOR: "Data Protection Board of India (DPBI)"
+  ENFORCEMENT_DATE: "2027-05-13"
+  DATA_RESIDENCY: "India"
+  ENCRYPTION_STANDARD: "AES-256"

@@ -1,0 +1,63 @@
+# =============================================================================
+# Tinai E2E Deployment Repo
+# =============================================================================
+
+# --- Credentials (CRITICAL — never commit) ---
+credentials-e2e.env
+*.unseal
+*.shard
+vault-init.json
+.env
+.env.local
+.env.production
+.env.*.local
+
+# --- Dependencies ---
+node_modules/
+vendor/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# --- Build artifacts ---
+.next/
+dist/
+dist-web/
+build/
+out/
+*.o
+*.so
+*.dylib
+*.node
+
+# --- IDE / OS ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- Backups (data, not config) ---
+backups/
+*.sql.gz
+*.tar.gz
+*.dump
+
+# --- Apps (deployed via platform, not via this repo) ---
+apps/
+
+# --- Docker / container artifacts ---
+*.tar
+docker-compose.override.yml
+
+# --- Terraform state (sensitive) ---
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+
+# --- Claude Code worktrees ---
+.claude/worktrees/

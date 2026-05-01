@@ -1,0 +1,146 @@
+# TinAI Forge - Patch Manifest
+# Lists all products and their patch metadata for the white-label transformation pipeline
+
+patches:
+  forgejo:
+    upstream_image: "codeberg.org/forgejo/forgejo"
+    tinai_product: "tinai-repos"
+    tinai_name: "TinAI Repos"
+    tinai_domain: "repos.tinai.cloud"
+    patch_version: "1.0.0"
+    description: "Enterprise Git Repository Management"
+    dockerfile: "patches/forgejo/Dockerfile.tinai"
+    test_suite: "tests/forgejo/"
+    registry_name: "tinai-repos"
+    files:
+      - src: "templates/base/head.tmpl"
+        dst: "/data/gitea/templates/base/head.tmpl"
+        type: "template_override"
+      - src: "templates/base/footer.tmpl"
+        dst: "/data/gitea/templates/base/footer.tmpl"
+        type: "template_override"
+      - src: "templates/user/auth/signin.tmpl"
+        dst: "/data/gitea/templates/user/auth/signin.tmpl"
+        type: "template_override"
+      - src: "public/css/tinai-theme.css"
+        dst: "/data/gitea/public/css/tinai-theme.css"
+        type: "static_asset"
+      - src: "public/img/tinai-logo.svg"
+        dst: "/data/gitea/public/img/tinai-logo.svg"
+        type: "static_asset"
+      - src: "config/app.ini.snippet"
+        dst: "/tmp/app.ini.snippet"
+        type: "config_append"
+    environment:
+      GITEA_CUSTOM: "/data/gitea"
+    ports:
+      - 3000
+    health_check:
+      endpoint: "/api/v1/version"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  grafana:
+    upstream_image: "grafana/grafana"
+    tinai_product: "tinai-insights"
+    tinai_name: "TinAI Insights"
+    tinai_domain: "insights.tinai.cloud"
+    patch_version: "1.0.0"
+    description: "Monitoring and Analytics Platform"
+    dockerfile: "patches/grafana/Dockerfile.tinai"
+    test_suite: "tests/grafana/"
+    registry_name: "tinai-insights"
+    files:
+      - src: "public/img/tinai-fav32.png"
+        dst: "/usr/share/grafana/public/img/fav32.png"
+        type: "static_asset"
+      - src: "public/img/tinai-logo.svg"
+        dst: "/usr/share/grafana/public/img/grafana_icon.svg"
+        type: "static_asset"
+      - src: "public/img/tinai-logo-large.svg"
+        dst: "/usr/share/grafana/public/img/grafana_typelogo.svg"
+        type: "static_asset"
+      - src: "provisioning/datasources/prometheus.yaml"
+        dst: "/etc/grafana/provisioning/datasources/prometheus.yaml"
+        type: "provisioning"
+      - src: "provisioning/dashboards/tinai-overview.json"
+        dst: "/etc/grafana/provisioning/dashboards/tinai-overview.json"
+        type: "provisioning"
+      - src: "config/grafana.ini.patch"
+        dst: "/tmp/grafana.ini.patch"
+        type: "config_patch"
+    environment:
+      GF_APP_MODE: "production"
+      GF_PATHS_LOGS: "/var/log/grafana"
+      GF_SECURITY_ADMIN_USER: "admin"
+    ports:
+      - 3000
+    health_check:
+      endpoint: "/api/health"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  woodpecker:
+    upstream_image: "woodpeckerci/woodpecker-server"
+    tinai_product: "tinai-pipelines"
+    tinai_name: "TinAI Pipelines"
+    tinai_domain: "pipelines.tinai.cloud"
+    patch_version: "1.0.0"
+    description: "CI/CD Pipeline Automation"
+    dockerfile: "patches/woodpecker/Dockerfile.tinai"
+    test_suite: "tests/woodpecker/"
+    registry_name: "tinai-pipelines"
+    files:
+      - src: "config/server.env"
+        dst: "/etc/woodpecker/server.env"
+        type: "config_file"
+    environment:
+      WOODPECKER_LOG_LEVEL: "info"
+      WOODPECKER_SERVER_ADDR: ":8000"
+      WOODPECKER_GRPC_ADDR: ":9000"
+    ports:
+      - 8000
+      - 9000
+      - 9091
+    health_check:
+      endpoint: "/api/health"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    required_secrets:
+      - WOODPECKER_GITEA_CLIENT
+      - WOODPECKER_GITEA_SECRET
+      - AGENT_SECRET
+      - DB_PASSWORD
+
+# TinAI Brand Colors (for documentation and UI consistency)
+branding:
+  colors:
+    primary_navy: "#0F172A"
+    accent_cyan: "#06B6D4"
+    secondary: "#0891B2"
+    white: "#FFFFFF"
+    light_gray: "#F1F5F9"
+  fonts:
+    primary: "Arial, Helvetica, sans-serif"
+    mono: "SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace"
+
+# Deployment configuration
+deployment:
+  namespace: "tinai"
+  image_registry: "registry.tinai.cloud"
+  image_prefix: "tinai"
+  pull_policy: "IfNotPresent"
+  replicas:
+    forgejo: 2
+    grafana: 2
+    woodpecker: 2
+
+# Build configuration
+build:
+  base_registry: "docker.io"
+  cache_enabled: true
+  multi_stage: true
+  optimize_layers: true

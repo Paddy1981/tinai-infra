@@ -1,0 +1,142 @@
+# Promtail DaemonSet — ships logs from all pods to Loki
+# helm install promtail grafana/promtail -f promtail-values.yaml -n monitoring
+config:
+  clients:
+    - url: http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push
+
+  snippets:
+    pipelineStages:
+      - cri: {}
+      - labeldrop:
+          - filename
+      - labels:
+          app:
+          namespace:
+          pod:
+          container:
+      # 1. Parse JSON logs if present (some services may emit structured JSON)
+      - json:
+          expressions:
+            tenant_id: tenant_id
+            level: level
+      # 2. Regex extraction for Go log package format (key=value): tenant=acme-corp
+      - regex:
+          expression: '(?i)tenant[=:\s]+(?P<tenant_id>[a-z0-9][a-z0-9\-]{0,62})'
+      # 3. Extract from bracket format [tenant:acme-corp]
+      - regex:
+          expression: '\[tenant:(?P<tenant_id>[a-z0-9][a-z0-9\-]{0,62})\]'
+      # 4. Promote extracted tenant_id to a label
+      - labels:
+          tenant_id:
+      # 5. Extract log level if not already set
+      - regex:
+          expression: '(?i)(level|lvl)[=:\s]+(?P<level>debug|info|warn(?:ing)?|error|fatal|panic)'
+      - labels:
+          level:
+      # 6. Tag all logs with platform label
+      - static_labels:
+          platform: tinai.cloud
+      # 7. Drop debug logs in production to reduce Loki storage cost
+      - drop:
+          expression: '(?i)\blevel=debug\b'
+          drop_counter_reason: debug_dropped
+
+  # Default scrape job for all pods (catch-all)
+  scrapeConfigs:
+    - job_name: kubernetes-pods
+      kubernetes_sd_configs:
+        - role: pod
+      relabel_configs:
+        - source_labels: [__meta_kubernetes_namespace]
+          target_label: namespace
+        - source_labels: [__meta_kubernetes_pod_name]
+          target_label: pod
+        - source_labels: [__meta_kubernetes_pod_container_name]
+          target_label: container
+        - source_labels: [__meta_kubernetes_pod_label_app]
+          target_label: app
+        - source_labels: [__meta_kubernetes_pod_annotation_tinai_cloud_tenant]
+          target_label: tinai_tenant
+      pipeline_stages:
+        - cri: {}
+
+    # Per-service scrape job for tinai-* namespaces with full tenant_id extraction
+    - job_name: tinai-services
+      kubernetes_sd_configs:
+        - role: pod
+      relabel_configs:
+        # Only scrape pods in tinai-* namespaces
+        - source_labels: [__meta_kubernetes_namespace]
+          regex: tinai.*
+          action: keep
+        # Map pod label "app" to service label for per-service querying
+        - source_labels: [__meta_kubernetes_pod_label_app]
+          target_label: service
+        # Override with well-known service names where app label matches
+        - source_labels: [__meta_kubernetes_pod_label_app]
+          regex: tinai-gateway
+          replacement: gateway
+          target_label: service
+        - source_labels: [__meta_kubernetes_pod_label_app]
+          regex: tinai-functions
+          replacement: functions
+          target_label: service
+        - source_labels: [__meta_kubernetes_pod_label_app]
+          regex: tinai-realtime
+          replacement: realtime
+          target_label: service
+        - source_labels: [__meta_kubernetes_pod_label_app]
+          regex: tinai-build-api
+          replacement: build-api
+          target_label: service
+        - source_labels: [__meta_kubernetes_pod_label_app]
+          regex: tinai-auth
+          replacement: auth
+          target_label: service
+        - source_labels: [__meta_kubernetes_namespace]
+          target_label: namespace
+        - source_labels: [__meta_kubernetes_pod_name]
+          target_label: pod
+        - source_labels: [__meta_kubernetes_pod_container_name]
+          target_label: container
+      pipeline_stages:
+        - cri: {}
+        # 1. Parse JSON logs if present (some services may emit structured JSON)
+        - json:
+            expressions:
+              tenant_id: tenant_id
+              level: level
+        # 2. Regex extraction for Go log package format (key=value): tenant=acme-corp
+        - regex:
+            expression: '(?i)tenant[=:\s]+(?P<tenant_id>[a-z0-9][a-z0-9\-]{0,62})'
+        # 3. Extract from bracket format [tenant:acme-corp]
+        - regex:
+            expression: '\[tenant:(?P<tenant_id>[a-z0-9][a-z0-9\-]{0,62})\]'
+        # 4. Promote extracted tenant_id to a label
+        - labels:
+            tenant_id:
+        # 5. Extract log level if not already set
+        - regex:
+            expression: '(?i)(level|lvl)[=:\s]+(?P<level>debug|info|warn(?:ing)?|error|fatal|panic)'
+        - labels:
+            level:
+        # 6. Tag all tinai service logs with platform label
+        - static_labels:
+            platform: tinai.cloud
+        # 7. Drop debug logs in production to reduce Loki storage cost
+        - drop:
+            expression: '(?i)\blevel=debug\b'
+            drop_counter_reason: debug_dropped
+
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi

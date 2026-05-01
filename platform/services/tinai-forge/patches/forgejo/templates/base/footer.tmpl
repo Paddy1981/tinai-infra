@@ -1,0 +1,24 @@
+<footer class="page-footer" role="group" aria-label="Footer">
+  <div class="footer-content">
+    <div class="left-links">
+      <a target="_blank" rel="noopener noreferrer" href="https://tinai.cloud">
+        TinAI Cloud Platform
+      </a>
+    </div>
+    <div class="center-links">
+      {{if .Link.HasIssues}}
+        <a href="{{.RepoLink}}/issues">{{ctx.Locale.Tr "repo.issues"}}</a>
+      {{end}}
+      {{if .Link.HasWiki}}
+        <a href="{{.RepoLink}}/wiki">{{ctx.Locale.Tr "repo.wiki"}}</a>
+      {{end}}
+      {{if .IsSigned}}
+        <a href="{{AppSubUrl}}/user/settings">{{ctx.Locale.Tr "settings"}}</a>
+      {{end}}
+    </div>
+    <div class="right-links">
+      <span>© {{.CurrentYear}} TinAI. Powered by TinAI Repos.</span>
+    </div>
+  </div>
+</footer>
+{{template "base/footer_content" .}}

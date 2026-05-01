@@ -1,0 +1,36 @@
+# NATS with JetStream — lightweight pub/sub + persistent queues
+# helm install nats nats/nats -f nats-values.yaml -n nats --create-namespace
+config:
+  cluster:
+    enabled: false    # single-node for now; enable for HA
+  jetstream:
+    enabled: true
+    fileStore:
+      enabled: true
+      dir: /data
+      pvc:
+        enabled: true
+        size: 10Gi
+        storageClass: local-path
+  merge:
+    max_payload: 8MB
+    accounts:
+      tinai:
+        jetstream: enabled
+        users:
+          - user: tinai-system
+            password: $NATS_SYSTEM_PASSWORD
+          - user: tinai-functions
+            password: $NATS_FUNCTIONS_PASSWORD
+
+natsBox:
+  enabled: false
+
+container:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi

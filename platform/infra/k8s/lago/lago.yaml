@@ -1,0 +1,201 @@
+# Secret 'lago-secrets' must be created manually (contains RSA key from file)
+# kubectl create secret generic lago-secrets -n billing --from-file=LAGO_RSA_PRIVATE_KEY=rsa.pem ...
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lago-api
+  namespace: billing
+  labels:
+    app: lago
+    component: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lago
+      component: api
+  template:
+    metadata:
+      labels:
+        app: lago
+        component: api
+    spec:
+      containers:
+        - name: lago-api
+          image: getlago/api:v1.22.1
+          ports:
+            - containerPort: 3000
+          env:
+            - name: RAILS_ENV
+              value: production
+            - name: LAGO_API_URL
+              value: "http://lago-api.billing.svc.cluster.local:3000"
+            - name: LAGO_FRONT_URL
+              value: "http://lago-front.billing.svc.cluster.local"
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: lago-secrets
+                  key: REDIS_URL
+            - name: RAILS_LOG_TO_STDOUT
+              value: "true"
+            - name: LAGO_DISABLE_SIGNUP
+              value: "true"
+          envFrom:
+            - secretRef:
+                name: lago-secrets
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lago-worker
+  namespace: billing
+  labels:
+    app: lago
+    component: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lago
+      component: worker
+  template:
+    metadata:
+      labels:
+        app: lago
+        component: worker
+    spec:
+      containers:
+        - name: lago-worker
+          image: getlago/api:v1.22.1
+          command: ["bundle", "exec", "sidekiq"]
+          env:
+            - name: RAILS_ENV
+              value: production
+            - name: LAGO_API_URL
+              value: "http://lago-api.billing.svc.cluster.local:3000"
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: lago-secrets
+                  key: REDIS_URL
+            - name: RAILS_LOG_TO_STDOUT
+              value: "true"
+          envFrom:
+            - secretRef:
+                name: lago-secrets
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lago-clock
+  namespace: billing
+  labels:
+    app: lago
+    component: clock
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lago
+      component: clock
+  template:
+    metadata:
+      labels:
+        app: lago
+        component: clock
+    spec:
+      containers:
+        - name: lago-clock
+          image: getlago/api:v1.22.1
+          command: ["bundle", "exec", "clockwork", "clock.rb"]
+          env:
+            - name: RAILS_ENV
+              value: production
+            - name: LAGO_API_URL
+              value: "http://lago-api.billing.svc.cluster.local:3000"
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: lago-secrets
+                  key: REDIS_URL
+            - name: RAILS_LOG_TO_STDOUT
+              value: "true"
+          envFrom:
+            - secretRef:
+                name: lago-secrets
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: lago-migrate
+  namespace: billing
+  labels:
+    app: lago
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: getlago/api:v1.22.1
+          command: ["rails", "db:migrate"]
+          env:
+            - name: RAILS_ENV
+              value: production
+            - name: RAILS_LOG_TO_STDOUT
+              value: "true"
+          envFrom:
+            - secretRef:
+                name: lago-secrets
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lago-api
+  namespace: billing
+spec:
+  selector:
+    app: lago
+    component: api
+  ports:
+    - port: 3000
+      targetPort: 3000

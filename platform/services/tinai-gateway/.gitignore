@@ -1,0 +1,7 @@
+.env
+*.exe
+*.test
+/tinai-gateway
+/out/
+node_modules/
+.env.local

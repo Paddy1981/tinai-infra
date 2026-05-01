@@ -1,0 +1,28 @@
+{
+  "name": "@tinai/billing-chain",
+  "version": "0.1.0",
+  "description": "Tinai billing automation chain — invoice, payment, trial, plan",
+  "type": "module",
+  "private": true,
+  "workspaces": [
+    "invoice-generator",
+    "payment-webhook",
+    "trial-lifecycle",
+    "plan-handler"
+  ],
+  "scripts": {
+    "invoice": "node invoice-generator/src/index.js",
+    "payment": "node payment-webhook/src/index.js",
+    "trial": "node trial-lifecycle/src/index.js",
+    "plan": "node plan-handler/src/index.js"
+  },
+  "dependencies": {
+    "fastify": "^4.26.0",
+    "nats": "^2.18.0",
+    "nodemailer": "^6.9.0",
+    "pdfkit": "^0.15.0",
+    "pino": "^8.19.0",
+    "pino-pretty": "^11.0.0"
+  },
+  "engines": { "node": ">=20" }
+}

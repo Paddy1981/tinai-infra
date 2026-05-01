@@ -1,0 +1,77 @@
+# CloudNativePG Cluster for the tinai-system databases (tinai-api, tinai-auth)
+# Replaces the manual StatefulSet. PITR to MinIO enabled.
+# NOTE: cluster name matches the live cluster (tinai-db, pod tinai-db-1).
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: tinai-db
+  namespace: tinai-system
+  annotations:
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
+spec:
+  instances: 2  # primary + 1 standby replica
+
+  # PostgreSQL version
+  imageName: ghcr.io/cloudnative-pg/postgresql:16
+
+  # Storage
+  storage:
+    size: 20Gi
+    storageClass: local-path
+
+  # Bootstrap: init from scratch or restore from backup
+  # Credentials are held in the live secret tinai-db-app (managed by CNPG)
+  bootstrap:
+    initdb:
+      database: tinai
+      owner: tinai
+      secret:
+        name: tinai-db-app  # live secret created by CNPG operator
+
+  # Continuous backup to external MinIO (Barman Cloud, WAL archiving = PITR)
+  backup:
+    barmanObjectStore:
+      destinationPath: s3://tinai-pg-backup-in/
+      endpointURL: https://minio.tinai.cloud
+      s3Credentials:
+        accessKeyId:
+          name: pg-backup-minio-creds
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: pg-backup-minio-creds
+          key: SECRET_ACCESS_KEY
+      wal:
+        compression: gzip
+        maxParallel: 2
+      data:
+        compression: gzip
+        jobs: 2
+    retentionPolicy: "30d"
+
+  # Connection pooling via PgBouncer sidecar
+  # (see pooler-tinai-system.yaml)
+
+  monitoring:
+    enablePodMonitor: true
+
+  # Resource limits
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+
+---
+# Daily scheduled base backup for the tinai-system primary cluster (IN region)
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: tinai-db-backup-in
+  namespace: tinai-system
+spec:
+  schedule: "0 2 * * *"   # 2 AM daily
+  backupOwnerReference: self
+  cluster:
+    name: tinai-db

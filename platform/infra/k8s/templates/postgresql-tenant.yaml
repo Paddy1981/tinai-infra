@@ -1,0 +1,229 @@
+# Per-tenant PostgreSQL 16 template (pgvector-enabled) + PostgREST sidecar
+# Replace TENANT_NAME with the actual tenant identifier before applying.
+# Usage: sed 's/TENANT_NAME/acme/g' postgresql-tenant.yaml | kubectl apply -f -
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tinai-tenant-TENANT_NAME
+  labels:
+    tinai.cloud/tenant: TENANT_NAME
+    tinai.cloud/component: database
+
+---
+# Secret template — populate POSTGRES_PASSWORD_B64 with a base64-encoded value
+# before applying (e.g. echo -n 'strongpassword' | base64)
+# Also add JWT_SECRET_B64 for PostgREST JWT verification (optional).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pg-TENANT_NAME-secret
+  namespace: tinai-tenant-TENANT_NAME
+type: Opaque
+data:
+  # REPLACE with base64-encoded password: echo -n '<password>' | base64
+  POSTGRES_PASSWORD: POSTGRES_PASSWORD_B64
+  # REPLACE with base64-encoded JWT secret (optional, enables JWT auth in PostgREST)
+  # JWT_SECRET: JWT_SECRET_B64
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pg-TENANT_NAME-init
+  namespace: tinai-tenant-TENANT_NAME
+data:
+  init.sql: |
+    CREATE EXTENSION IF NOT EXISTS vector;
+    CREATE EXTENSION IF NOT EXISTS pg_trgm;
+    CREATE EXTENSION IF NOT EXISTS uuid-ossp;
+    GRANT USAGE ON SCHEMA public TO appuser;
+    GRANT CREATE ON SCHEMA public TO appuser;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO appuser;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO appuser;
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: pg-TENANT_NAME
+  namespace: tinai-tenant-TENANT_NAME
+  labels:
+    app: pg-TENANT_NAME
+    tinai.cloud/tenant: TENANT_NAME
+    tinai.cloud/component: database
+spec:
+  serviceName: TENANT_NAME-postgres-headless
+  replicas: 1
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      tinai.cloud/app: postgres-TENANT_NAME
+  template:
+    metadata:
+      labels:
+        app: pg-TENANT_NAME
+        tinai.cloud/app: postgres-TENANT_NAME
+        tinai.cloud/tenant: TENANT_NAME
+        tinai.cloud/component: database
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg16
+          ports:
+            - containerPort: 5432
+              name: postgres
+          env:
+            - name: POSTGRES_DB
+              value: appdb
+            - name: POSTGRES_USER
+              value: appuser
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pg-TENANT_NAME-secret
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "500m"
+            limits:
+              memory: "512Mi"
+              cpu: "1000m"
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+            - name: init-sql
+              mountPath: /docker-entrypoint-initdb.d/
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "appuser", "-d", "appdb"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "appuser", "-d", "appdb"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+
+        - name: postgrest
+          image: postgrest/postgrest:v12.2.3
+          ports:
+            - containerPort: 3000
+              name: postgrest
+          env:
+            - name: PGRST_DB_URI
+              value: "postgresql://appuser:$(POSTGRES_PASSWORD)@localhost:5432/appdb"
+            # SECURITY: anon role must be created in DB migrations with NO privileges
+            # granted (no GRANT USAGE, no table grants). It exists solely as an
+            # unauthenticated placeholder — PostgREST will refuse all unauthenticated
+            # requests that would require data access, and JWT-authenticated requests
+            # switch to the caller's role via SET LOCAL ROLE.
+            - name: PGRST_DB_ANON_ROLE
+              value: "anon"
+            - name: PGRST_DB_SCHEMA
+              value: "public"
+            - name: PGRST_OPENAPI_SERVER_PROXY_URI
+              value: "http://TENANT_NAME-postgrest.tinai-tenant-TENANT_NAME.svc.cluster.local"
+            - name: PGRST_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: pg-TENANT_NAME-secret
+                  key: JWT_SECRET
+                  optional: true
+            - name: PGRST_SERVER_PORT
+              value: "3000"
+            # Inherit POSTGRES_PASSWORD so the PGRST_DB_URI substitution above works
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pg-TENANT_NAME-secret
+                  key: POSTGRES_PASSWORD
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+      volumes:
+        - name: init-sql
+          configMap:
+            name: pg-TENANT_NAME-init
+
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: longhorn
+        resources:
+          requests:
+            storage: 5Gi
+
+---
+# Headless Service for stable pod DNS (required by StatefulSet)
+apiVersion: v1
+kind: Service
+metadata:
+  name: TENANT_NAME-postgres-headless
+  namespace: tinai-tenant-TENANT_NAME
+spec:
+  clusterIP: None
+  selector:
+    tinai.cloud/app: postgres-TENANT_NAME
+  ports:
+    - port: 5432
+
+---
+# ClusterIP Service for app connectivity
+apiVersion: v1
+kind: Service
+metadata:
+  name: pg-TENANT_NAME
+  namespace: tinai-tenant-TENANT_NAME
+  labels:
+    app: pg-TENANT_NAME
+    tinai.cloud/tenant: TENANT_NAME
+    tinai.cloud/component: database
+spec:
+  type: ClusterIP
+  selector:
+    tinai.cloud/app: postgres-TENANT_NAME
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+      protocol: TCP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: TENANT_NAME-postgrest
+  namespace: tinai-tenant-TENANT_NAME
+  labels:
+    tinai.cloud/tenant: TENANT_NAME
+    tinai.cloud/component: postgrest
+spec:
+  selector:
+    tinai.cloud/app: postgres-TENANT_NAME
+  ports:
+    - port: 3000
+      targetPort: 3000
+      name: postgrest

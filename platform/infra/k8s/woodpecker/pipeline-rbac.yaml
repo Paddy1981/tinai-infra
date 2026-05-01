@@ -1,0 +1,38 @@
+# Pipeline ServiceAccount — used by all Woodpecker build pods in tinai-build.
+# Woodpecker spawns pods in tinai-build; these pods use this SA so that the
+# deploy step can run kubectl against tinai-system without a kubeconfig file.
+# Apply: kubectl apply -f k8s/woodpecker/pipeline-rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: woodpecker-pipeline
+  namespace: tinai-build
+---
+# Allow pipeline pods to patch/rollout deployments in tinai-system.
+# Scoped to tinai-system only — no cross-namespace write access.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: woodpecker-pipeline-deploy
+  namespace: tinai-system
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: woodpecker-pipeline-deploy
+  namespace: tinai-system
+subjects:
+  - kind: ServiceAccount
+    name: woodpecker-pipeline
+    namespace: tinai-build
+roleRef:
+  kind: Role
+  name: woodpecker-pipeline-deploy
+  apiGroup: rbac.authorization.k8s.io

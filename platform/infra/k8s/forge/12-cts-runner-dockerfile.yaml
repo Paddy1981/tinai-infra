@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cts-runner-dockerfile
+  namespace: tinai-forge
+data:
+  Dockerfile: |
+    FROM golang:1.22-alpine AS builder
+    RUN apk add --no-cache git ca-certificates
+    WORKDIR /app
+    COPY go.mod go.sum ./
+    RUN go mod download
+    COPY . .
+    RUN go build -o cts-runner ./tests/runner/...
+
+    FROM alpine:3.19
+    RUN apk add --no-cache ca-certificates curl
+    # Install Trivy client (connects to trivy server, doesn't need DB locally)
+    RUN wget -qO- https://github.com/aquasecurity/trivy/releases/download/v0.48.0/trivy_0.48.0_Linux-64bit.tar.gz \
+        | tar xz -C /usr/local/bin trivy
+    COPY --from=builder /app/cts-runner /usr/local/bin/cts-runner
+    ENTRYPOINT ["cts-runner"]

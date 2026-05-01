@@ -1,0 +1,44 @@
+when:
+  - event: push
+    branch: [main, master]
+
+steps:
+  # 1. Compile TypeScript — fast fail before a full Docker build
+  typecheck:
+    image: node:20-alpine
+    commands:
+      - npm ci --prefer-offline
+      - npm run build
+
+  # 2. Build image with layer cache from previous :latest
+  build-push:
+    image: woodpeckerci/plugin-docker-buildx
+    privileged: true
+    settings:
+      registry: registry.e2enetworks.net
+      repo: registry.e2enetworks.net/tinai/api
+      tags:
+        - latest
+        - ${CI_COMMIT_SHA:0:8}
+      username:
+        from_secret: REGISTRY_USERNAME
+      password:
+        from_secret: REGISTRY_PASSWORD
+      platforms:
+        - linux/amd64
+      cache_from: "registry.e2enetworks.net/tinai/api:latest"
+    depends_on: [typecheck]
+
+  # 3. Deploy in-cluster — kubectl runs inside the cluster using
+  #    woodpecker-pipeline SA token, so no kubeconfig file needed and
+  #    rollout status is not affected by the E2E kubelet routing issue.
+  deploy:
+    image: bitnami/kubectl:1.29
+    commands:
+      - kubectl set image deployment/tinai-api api=registry.e2enetworks.net/tinai/api:${CI_COMMIT_SHA:0:8} -n tinai-system
+      - kubectl rollout status deployment/tinai-api -n tinai-system --timeout=180s
+      - kubectl get pods -n tinai-system -l app=tinai-api --no-headers
+    when:
+      event: push
+      branch: [main, master]
+    depends_on: [build-push]

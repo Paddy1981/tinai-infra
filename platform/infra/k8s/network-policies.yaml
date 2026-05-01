@@ -1,0 +1,783 @@
+# NetworkPolicy manifests for Tinai Cloud namespace isolation.
+# Apply order: namespaces.yaml → network-policies.yaml
+# kubectl apply -f network-policies.yaml
+#
+# Design:
+#   - Default deny-all ingress + egress for tinai-staging and tinai-prod
+#   - Intra-namespace pod-to-pod communication is always allowed
+#   - tinai-system is permitted to reach staging/prod on port 8080
+#   - All namespaces can reach kube-dns (port 53 UDP + TCP)
+#   - tinai-build gets external egress for git clone (Forgejo) + kaniko registry push
+#   - tinai-system gets external egress for Fastify → Anthropic API + Celestrak TLE feeds
+# NOTE: TKS CNI evaluates NetworkPolicy post-DNAT. The kubernetes Service (10.96.0.1:443)
+#       is DNAT'd to 10.10.0.6:6443, so allow-internal-tcp must include port 6443.
+
+# ── tinai-staging: default deny all ──────────────────────────────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: tinai-staging
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+# ── tinai-prod: default deny all ─────────────────────────────────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: tinai-prod
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+# ── tinai-staging: allow intra-namespace pod communication ───────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-namespace
+  namespace: tinai-staging
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}
+
+# ── tinai-prod: allow intra-namespace pod communication ──────────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-namespace
+  namespace: tinai-prod
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}
+
+# ── tinai-staging: allow ingress from tinai-system on port 8080 ──────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-tinai-system
+  namespace: tinai-staging
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              tinai.cloud/tier: system
+      ports:
+        - protocol: TCP
+          port: 8080
+
+# ── tinai-prod: allow ingress from tinai-system on port 8080 ─────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-tinai-system
+  namespace: tinai-prod
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              tinai.cloud/tier: system
+      ports:
+        - protocol: TCP
+          port: 8080
+
+# ── tinai-staging: allow egress to kube-dns (port 53) ───────────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-kube-dns
+  namespace: tinai-staging
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+# ── tinai-prod: allow egress to kube-dns (port 53) ──────────────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-kube-dns
+  namespace: tinai-prod
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+# ── tinai-staging-qa: default deny all ───────────────────────────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all-qa-staging
+  namespace: tinai-staging-qa
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+# ── tinai-staging-qa: allow intra-namespace pod communication ─────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-namespace
+  namespace: tinai-staging-qa
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}
+
+# ── tinai-staging-qa: allow ingress from tinai-system on port 8080 ───────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-tinai-system
+  namespace: tinai-staging-qa
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              tinai.cloud/tier: system
+      ports:
+        - protocol: TCP
+          port: 8080
+
+# ── tinai-staging-qa: allow egress to kube-dns (port 53) ─────────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-kube-dns
+  namespace: tinai-staging-qa
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+# ── tinai-prod-qa: default deny all ──────────────────────────────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all-qa-prod
+  namespace: tinai-prod-qa
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+# ── tinai-prod-qa: allow intra-namespace pod communication ───────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-namespace
+  namespace: tinai-prod-qa
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}
+
+# ── tinai-prod-qa: allow ingress from tinai-system on port 8080 ──────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-tinai-system
+  namespace: tinai-prod-qa
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              tinai.cloud/tier: system
+      ports:
+        - protocol: TCP
+          port: 8080
+
+# ── tinai-prod-qa: allow egress to kube-dns (port 53) ────────────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-kube-dns
+  namespace: tinai-prod-qa
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+# ── tinai-staging-ae: default deny all ───────────────────────────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all-ae-staging
+  namespace: tinai-staging-ae
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+# ── tinai-staging-ae: allow intra-namespace pod communication ─────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-namespace
+  namespace: tinai-staging-ae
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}
+
+# ── tinai-staging-ae: allow ingress from tinai-system on port 8080 ───────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-tinai-system
+  namespace: tinai-staging-ae
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              tinai.cloud/tier: system
+      ports:
+        - protocol: TCP
+          port: 8080
+
+# ── tinai-staging-ae: allow egress to kube-dns (port 53) ─────────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-kube-dns
+  namespace: tinai-staging-ae
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+# ── tinai-prod-ae: default deny all ──────────────────────────────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all-ae-prod
+  namespace: tinai-prod-ae
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+# ── tinai-prod-ae: allow intra-namespace pod communication ───────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-namespace
+  namespace: tinai-prod-ae
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}
+
+# ── tinai-prod-ae: allow ingress from tinai-system on port 8080 ──────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-tinai-system
+  namespace: tinai-prod-ae
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              tinai.cloud/tier: system
+      ports:
+        - protocol: TCP
+          port: 8080
+
+# ── tinai-prod-ae: allow egress to kube-dns (port 53) ────────────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-kube-dns
+  namespace: tinai-prod-ae
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+# ── tinai-build: allow external egress ───────────────────────────────────────
+# Required for:
+#   - alpine/git cloning from Forgejo (HTTP/HTTPS to internal + external URLs)
+#   - kaniko pushing built images to the container registry (HTTPS)
+# No ingress rules needed; build Jobs are fire-and-forget.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-external-egress
+  namespace: tinai-build
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # kube-dns
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Forgejo internal service (git clone via in-cluster DNS)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              tinai.cloud/tier: system
+      ports:
+        - protocol: TCP
+          port: 3000
+    # External HTTPS — registry push + public git endpoints
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80
+
+# ── tinai-system: allow external egress ──────────────────────────────────────
+# Required for:
+#   - Fastify API → Anthropic API (api.anthropic.com:443)
+#   - Fastify API → Celestrak TLE feed (celestrak.org:443)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-external-egress
+  namespace: tinai-system
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # kube-dns
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # External HTTPS — Anthropic API + Celestrak TLE
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+
+# ── tinai-system: default deny all ───────────────────────────────────────────
+# NOTE: The allow-external-egress policy above explicitly permits the required
+# outbound traffic. This default-deny baseline ensures no other egress or
+# ingress is silently allowed.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: tinai-system
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+# ── tinai-build: default deny all ────────────────────────────────────────────
+# NOTE: The allow-external-egress policy above permits git-clone and registry
+# push egress. This default-deny baseline closes everything else.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: tinai-build
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+# ── tinai-functions: default deny all ────────────────────────────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: tinai-functions
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+# ── tinai-system: allow intra-namespace pod communication ───────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-namespace
+  namespace: tinai-system
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}
+
+# ── tinai-system: allow ingress from ingress-nginx ───────────────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-nginx
+  namespace: tinai-system
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 3000
+        - protocol: TCP
+          port: 3001
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8089   # cert-manager ACME HTTP01 solver
+
+# ── tinai-system: allow forgejo to reach postgres ────────────────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-forgejo-to-db
+  namespace: tinai-system
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: tinai-db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: forgejo
+      ports:
+        - protocol: TCP
+          port: 5432
+
+# ── tinai-system: allow woodpecker to reach postgres ─────────────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-woodpecker-to-db
+  namespace: tinai-system
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: tinai-db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: woodpecker
+      ports:
+        - protocol: TCP
+          port: 5432
+
+# ── tinai-system: allow CNPG operator to poll instance status (port 8000) ────
+# The CNPG operator (cnpg-system) calls each instance's /status HTTP endpoint
+# on port 8000. Without this, the Cluster phase stays "Instance Status
+# Extraction Error: HTTP communication issue".
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-cnpg-operator
+  namespace: tinai-system
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: tinai-db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cnpg-system
+      ports:
+        - protocol: TCP
+          port: 8000
+
+# ── tinai-system: allow tinai-instances to reach postgres ────────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-instances-to-db
+  namespace: tinai-system
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: tinai-db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: tinai-instances
+      ports:
+        - protocol: TCP
+          port: 5432
+
+# ── tinai-system: allow egress to internal cluster services ─────────────────
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-internal-tcp
+  namespace: tinai-system
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+      ports:
+        - protocol: TCP
+          port: 443    # internal HTTPS
+        - protocol: TCP
+          port: 6443   # K8s API server real port (CNI sees post-DNAT 10.10.0.6:6443)
+        - protocol: TCP
+          port: 5432   # postgres
+        - protocol: TCP
+          port: 4222   # nats
+        - protocol: TCP
+          port: 9000   # minio
+        - protocol: TCP
+          port: 8200   # vault
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 3000
+        - protocol: TCP
+          port: 3001
+        - protocol: TCP
+          port: 8080

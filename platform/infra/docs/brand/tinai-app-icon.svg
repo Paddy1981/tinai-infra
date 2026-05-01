@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <!--
+    Tinai.cloud — App icon / favicon
+    Saffron rounded-square container, white T-mark centred inside.
+    Use as favicon.svg, apple-touch-icon, or any badge context.
+    Scale via width/height (32, 64, 128, 192, 512).
+
+    Centering math (scale 0.7):
+      path bounds in 32×32 viewBox: x[3..29] y[4..32]  →  w=26 h=28
+      after scale(0.7): x[2.1..20.3] y[2.8..22.4]
+      tx = (32−18.2)/2 − 2.1 = 4.8
+      ty = (32−19.6)/2 − 2.8 = 3.4   →  centre lands at (16,16) ✓
+  -->
+  <rect width="32" height="32" rx="7" fill="#F97316"/>
+  <path
+    d="M 8,4 H 24 Q 29,4 29,9 V 14 H 20 V 28 Q 20,32 16,32 Q 12,32 12,28 V 14 H 3 V 9 Q 3,4 8,4 Z"
+    fill="white"
+    transform="translate(4.8, 3.4) scale(0.7)"
+  />
+</svg>

@@ -1,0 +1,352 @@
+{{template "base/head" .}}
+<body>
+  <div class="signin-wrapper">
+    <div class="signin-container">
+      <div class="signin-left">
+        <div class="signin-branding">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="64" height="64" class="tinai-logo-signin">
+            <rect width="48" height="48" rx="8" fill="#0F172A"/>
+            <text x="50%" y="58%" dominant-baseline="middle" text-anchor="middle"
+                  font-family="Arial, sans-serif" font-weight="700" font-size="28"
+                  fill="#06B6D4">T</text>
+            <rect x="8" y="36" width="32" height="3" rx="1.5" fill="#06B6D4"/>
+          </svg>
+          <h1>TinAI Repos</h1>
+          <p class="signin-subtitle">Enterprise Git Repository Management</p>
+        </div>
+        <div class="signin-features">
+          <div class="feature-item">
+            <span class="feature-icon">★</span>
+            <span>Secure Repository Hosting</span>
+          </div>
+          <div class="feature-item">
+            <span class="feature-icon">★</span>
+            <span>Team Collaboration</span>
+          </div>
+          <div class="feature-item">
+            <span class="feature-icon">★</span>
+            <span>Advanced CI/CD Integration</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="signin-right">
+        <div class="signin-form-container">
+          <h2>Welcome to TinAI Repos</h2>
+          <p>Sign in to your account</p>
+
+          <form class="ui form" id="signin-form" action="{{.SignInLink}}" method="post">
+            {{.CsrfTokenHtml}}
+            <div class="field {{if .Err_UserName}}error{{end}}">
+              <label for="user_name">{{ctx.Locale.Tr "home.username_or_email"}}</label>
+              <input id="user_name" type="text" name="user_name" value="{{.user_name}}" autofocus required>
+              {{if .Err_UserName}}<span class="error-message">{{.Err_UserName}}</span>{{end}}
+            </div>
+
+            <div class="field {{if .Err_Password}}error{{end}}">
+              <label for="password">{{ctx.Locale.Tr "password"}}</label>
+              <input id="password" type="password" name="password" required>
+              {{if .Err_Password}}<span class="error-message">{{.Err_Password}}</span>{{end}}
+            </div>
+
+            {{if .OAuth2Providers}}
+            <div class="oauth-section">
+              <p class="oauth-divider">Or continue with</p>
+              <div class="oauth-providers">
+                {{range .OAuth2Providers}}
+                <a href="{{.AuthSource.LoginSource.AuthorizationURL}}" class="oauth-button oauth-{{.Name}}">
+                  {{.DisplayName}}
+                </a>
+                {{end}}
+              </div>
+            </div>
+            {{end}}
+
+            <button type="submit" class="ui primary button signin-button">
+              {{ctx.Locale.Tr "sign_in"}}
+            </button>
+
+            {{if .AllowRegister}}
+            <div class="signin-footer">
+              <p>{{ctx.Locale.Tr "auth.dont_have_account"}} <a href="{{AppSubUrl}}/user/sign_up">{{ctx.Locale.Tr "auth.sign_up_now"}}</a></p>
+            </div>
+            {{end}}
+          </form>
+
+          {{if .MustChangePassword}}
+          <div class="ui warning message">
+            <p>{{ctx.Locale.Tr "auth.password_change_required"}}</p>
+          </div>
+          {{end}}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    :root {
+      --tinai-navy: #0F172A;
+      --tinai-cyan: #06B6D4;
+      --tinai-secondary: #0891B2;
+      --tinai-white: #FFFFFF;
+      --tinai-light-gray: #F1F5F9;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    .signin-wrapper {
+      display: flex;
+      height: 100vh;
+    }
+
+    .signin-container {
+      display: flex;
+      width: 100%;
+      height: 100%;
+    }
+
+    .signin-left {
+      flex: 0 0 45%;
+      background: linear-gradient(135deg, var(--tinai-navy) 0%, #1E293B 100%);
+      color: var(--tinai-white);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 3rem;
+      box-sizing: border-box;
+    }
+
+    .signin-branding {
+      margin-bottom: 4rem;
+    }
+
+    .tinai-logo-signin {
+      margin-bottom: 1.5rem;
+      filter: drop-shadow(0 4px 12px rgba(6, 182, 212, 0.3));
+    }
+
+    .signin-branding h1 {
+      margin: 1rem 0 0.5rem 0;
+      font-size: 2rem;
+      color: var(--tinai-cyan);
+      letter-spacing: 0.5px;
+    }
+
+    .signin-subtitle {
+      color: #E2E8F0;
+      font-size: 0.95rem;
+      margin: 0;
+    }
+
+    .signin-features {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .feature-item {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      color: #E2E8F0;
+      font-size: 0.95rem;
+    }
+
+    .feature-icon {
+      color: var(--tinai-cyan);
+      font-size: 1.2rem;
+    }
+
+    .signin-right {
+      flex: 0 0 55%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem;
+      background-color: var(--tinai-light-gray);
+      box-sizing: border-box;
+    }
+
+    .signin-form-container {
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .signin-form-container h2 {
+      margin-top: 0;
+      margin-bottom: 0.5rem;
+      color: var(--tinai-navy);
+      font-size: 1.75rem;
+    }
+
+    .signin-form-container > p {
+      color: #64748B;
+      margin-bottom: 2rem;
+    }
+
+    .ui.form .field {
+      margin-bottom: 1.5rem;
+    }
+
+    .ui.form label {
+      color: var(--tinai-navy);
+      font-weight: 600;
+      font-size: 0.95rem;
+      display: block;
+      margin-bottom: 0.5rem;
+    }
+
+    .ui.form input[type="text"],
+    .ui.form input[type="password"] {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid #E2E8F0;
+      border-radius: 6px;
+      font-size: 1rem;
+      box-sizing: border-box;
+      transition: border-color 0.2s;
+    }
+
+    .ui.form input[type="text"]:focus,
+    .ui.form input[type="password"]:focus {
+      outline: none;
+      border-color: var(--tinai-cyan);
+      box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.1);
+    }
+
+    .ui.form.error input {
+      border-color: #EF4444 !important;
+    }
+
+    .error-message {
+      color: #EF4444;
+      font-size: 0.85rem;
+      display: block;
+      margin-top: 0.3rem;
+    }
+
+    .oauth-section {
+      margin: 2rem 0;
+      text-align: center;
+    }
+
+    .oauth-divider {
+      color: #94A3B8;
+      font-size: 0.9rem;
+      position: relative;
+      margin: 1.5rem 0;
+    }
+
+    .oauth-divider::before,
+    .oauth-divider::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      width: 45%;
+      height: 1px;
+      background-color: #E2E8F0;
+    }
+
+    .oauth-divider::before {
+      left: 0;
+    }
+
+    .oauth-divider::after {
+      right: 0;
+    }
+
+    .oauth-providers {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .oauth-button {
+      padding: 0.75rem;
+      border: 1px solid #E2E8F0;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.95rem;
+      color: var(--tinai-navy);
+      background-color: var(--tinai-white);
+      transition: all 0.2s;
+      display: block;
+    }
+
+    .oauth-button:hover {
+      border-color: var(--tinai-cyan);
+      box-shadow: 0 2px 8px rgba(6, 182, 212, 0.15);
+    }
+
+    .signin-button {
+      width: 100%;
+      padding: 0.75rem !important;
+      background-color: var(--tinai-cyan) !important;
+      border-color: var(--tinai-secondary) !important;
+      color: var(--tinai-navy) !important;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .signin-button:hover {
+      background-color: var(--tinai-secondary) !important;
+    }
+
+    .signin-footer {
+      text-align: center;
+      margin-top: 1.5rem;
+      color: #64748B;
+      font-size: 0.9rem;
+    }
+
+    .signin-footer a {
+      color: var(--tinai-cyan);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .signin-footer a:hover {
+      color: var(--tinai-secondary);
+    }
+
+    .ui.warning.message {
+      background-color: #FEF3C7 !important;
+      border-color: #F59E0B !important;
+      color: #92400E !important;
+      margin-top: 1.5rem;
+    }
+
+    @media (max-width: 768px) {
+      .signin-container {
+        flex-direction: column;
+      }
+
+      .signin-left,
+      .signin-right {
+        flex: 1;
+      }
+
+      .signin-left {
+        padding: 2rem;
+        justify-content: flex-start;
+        min-height: auto;
+      }
+
+      .signin-right {
+        padding: 2rem;
+      }
+
+      .signin-branding h1 {
+        font-size: 1.5rem;
+      }
+    }
+  </style>
+
+  {{template "base/footer" .}}
+</body>

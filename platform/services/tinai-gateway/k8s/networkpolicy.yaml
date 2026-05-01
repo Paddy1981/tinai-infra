@@ -1,0 +1,67 @@
+---
+# ── NetworkPolicy for tinai-gateway ─────────────────────────────────────────
+#
+# Ingress:  only pods inside tinai-system namespace
+# Egress:
+#   - external TCP 443  → Anthropic + Google APIs
+#   - ollama.tinai-system.svc:11434  → local inference
+#   - postgres / any pod labelled app=postgres in tinai-system:5432
+#   - kube-dns (UDP/TCP 53) for internal service resolution
+#
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tinai-gateway
+  namespace: tinai-system
+spec:
+  podSelector:
+    matchLabels:
+      app: tinai-gateway
+
+  policyTypes:
+    - Ingress
+    - Egress
+
+  # ── Ingress ───────────────────────────────────────────────────────────────
+  ingress:
+    # Allow traffic from any pod in the same tinai-system namespace
+    # (covers ingress-nginx, internal services, etc.).
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: tinai-system
+      ports:
+        - protocol: TCP
+          port: 3005
+
+  # ── Egress ────────────────────────────────────────────────────────────────
+  egress:
+    # 1. External HTTPS — Anthropic (api.anthropic.com) + Google (generativelanguage.googleapis.com)
+    - ports:
+        - protocol: TCP
+          port: 443
+
+    # 2. Ollama local inference service within the cluster.
+    - to:
+        - podSelector:
+            matchLabels:
+              app: ollama
+      ports:
+        - protocol: TCP
+          port: 11434
+
+    # 3. Postgres — pods labelled app=postgres in tinai-system.
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+
+    # 4. Cluster DNS resolution (required for Kubernetes service discovery).
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

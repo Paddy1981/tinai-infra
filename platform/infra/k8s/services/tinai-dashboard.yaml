@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tinai-dashboard
+  namespace: tinai-system
+  labels:
+    app: tinai-dashboard
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tinai-dashboard
+  template:
+    metadata:
+      labels:
+        app: tinai-dashboard
+    spec:
+      imagePullSecrets:
+        - name: e2e-registry-secret
+      containers:
+        - name: dashboard
+          image: registry.e2enetworks.net/tinai/dashboard:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: NEXT_PUBLIC_API_URL
+              value: "https://api.tinai.cloud"
+            - name: NEXT_PUBLIC_GATEWAY_URL
+              value: "https://gateway.tinai.cloud"
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: tinai-api-secrets
+                  key: JWT_SECRET
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tinai-dashboard
+  namespace: tinai-system
+spec:
+  selector:
+    app: tinai-dashboard
+  ports:
+    - port: 3000
+      targetPort: 3000

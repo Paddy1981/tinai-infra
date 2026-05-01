@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tinai-region-config-ae
+  namespace: tinai-system
+  labels:
+    tinai.cloud/region: "AE"
+data:
+  REGION: "AE"
+  DC_NAME: "Khazna DC"
+  DC_CITY: "Abu Dhabi"
+  DC_COUNTRY: "UAE"
+  COMPLIANCE_FRAMEWORK: "Federal Decree-Law No. 45 of 2021 (PDPL)"
+  REGULATOR: "UAE Data Office"
+  ENFORCEMENT_DATE: "2023-01-02"
+  DATA_RESIDENCY: "UAE"
+  ENCRYPTION_STANDARD: "AES-256"

@@ -1,0 +1,11 @@
+node_modules/
+.env
+.env.local
+*.log
+dist/
+.next/
+vendor/
+__pycache__/
+*.pyc
+.DS_Store
+tsconfig.tsbuildinfo

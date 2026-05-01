@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tinai-gateway
+  namespace: tinai-system
+  labels:
+    app: tinai-gateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tinai-gateway
+  template:
+    metadata:
+      labels:
+        app: tinai-gateway
+    spec:
+      imagePullSecrets:
+        - name: e2e-registry-secret
+      containers:
+        - name: gateway
+          image: registry.e2enetworks.net/tinai/gateway:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: tinai-gateway-secrets
+          env:
+            - name: PORT
+              value: "8080"
+            - name: TINAI_API_URL
+              value: "http://tinai-api.tinai-system.svc.cluster.local:3000"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tinai-gateway
+  namespace: tinai-system
+spec:
+  selector:
+    app: tinai-gateway
+  ports:
+    - port: 8080
+      targetPort: 8080

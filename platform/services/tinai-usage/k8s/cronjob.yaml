@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: usage-aggregator
+  namespace: tinai-system
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: usage-aggregator
+              image: registry.e2enetworks.net/tinai/usage-aggregator:latest
+              imagePullPolicy: Never
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: usage-aggregator-db
+                      key: DATABASE_URL
+                - name: PROMETHEUS_URL
+                  value: "http://prometheus-server.monitoring.svc.cluster.local:80"
+                - name: STAGING_NAMESPACE
+                  value: "tinai-staging"
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 100m
+                  memory: 64Mi

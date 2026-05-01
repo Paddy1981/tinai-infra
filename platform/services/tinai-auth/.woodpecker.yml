@@ -1,0 +1,42 @@
+when:
+  - event: [push, pull_request]
+    branch: [main, master]
+
+steps:
+  test:
+    image: golang:1.22-alpine
+    commands:
+      - go test ./...
+      - go vet ./...
+
+  build-push:
+    image: woodpeckerci/plugin-docker-buildx
+    privileged: true
+    settings:
+      registry: registry.e2enetworks.net
+      repo: registry.e2enetworks.net/tinai/auth
+      tags:
+        - latest
+        - ${CI_COMMIT_SHA:0:8}
+      username:
+        from_secret: REGISTRY_USERNAME
+      password:
+        from_secret: REGISTRY_PASSWORD
+      platforms:
+        - linux/amd64
+      cache_from: "registry.e2enetworks.net/tinai/auth:latest"
+    when:
+      event: push
+      branch: [main, master]
+    depends_on: [test]
+
+  # deploy: uncomment once k8s/services/tinai-auth.yaml manifest is created
+  # deploy:
+  #   image: bitnami/kubectl:1.29
+  #   commands:
+  #     - kubectl set image deployment/tinai-auth auth=registry.e2enetworks.net/tinai/auth:${CI_COMMIT_SHA:0:8} -n tinai-system
+  #     - kubectl rollout status deployment/tinai-auth -n tinai-system --timeout=180s
+  #   when:
+  #     event: push
+  #     branch: [main, master]
+  #   depends_on: [build-push]

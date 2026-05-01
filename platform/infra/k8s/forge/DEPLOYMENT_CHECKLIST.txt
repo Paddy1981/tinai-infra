@@ -1,0 +1,439 @@
+================================================================================
+TinAI FORGE - DEPLOYMENT CHECKLIST
+================================================================================
+
+Project: TinAI Forge (Automated White-Label Pipeline)
+Cluster: E2E Networks Kubernetes
+Status: READY FOR DEPLOYMENT
+
+================================================================================
+PRE-DEPLOYMENT REQUIREMENTS
+================================================================================
+
+Infrastructure Prerequisites:
+  [ ] E2E Networks Kubernetes cluster accessible
+  [ ] kubectl configured with context: kubernetes-admin@kubernetes
+  [ ] Cluster has NGINX ingress controller deployed
+  [ ] cert-manager installed with letsencrypt-prod ClusterIssuer
+  [ ] CloudNativePG cluster running in tinai-system namespace
+
+Required Existing Resources:
+  [ ] Namespace: tinai-system (exists)
+  [ ] Namespace: tinai-build (exists)
+  [ ] Namespace: tinai-staging (exists)
+  [ ] Namespace: forgejo (exists)
+  [ ] PostgreSQL cluster: cnpg-cluster-rw in tinai-system
+  [ ] Docker registry: registry.e2enetworks.net
+
+Application Prerequisites:
+  [ ] tinai-forge container image built
+  [ ] Image pushed to: registry.e2enetworks.net/tinai/tinai-forge:latest
+  [ ] PostgreSQL connection credentials ready
+  [ ] API key generated (FORGE_API_KEY)
+  [ ] Docker registry credentials available
+  [ ] (Optional) GitHub token for higher rate limits
+
+================================================================================
+CREDENTIAL PREPARATION
+================================================================================
+
+Update 02-secrets.yaml with the following values:
+
+1. PostgreSQL Connection (CHANGEME)
+   Field: FORGE_DB_URL
+   Format: postgresql://forge:PASSWORD@cnpg-cluster-rw.tinai-system.svc.cluster.local:5432/tinai_forge
+   Action: Replace PASSWORD with actual database password
+
+2. Forge API Key (CHANGEME)
+   Field: FORGE_API_KEY
+   Format: Your secure API key (generate with: openssl rand -base64 32)
+   Action: Replace placeholder with generated key
+
+3. GitHub Token (OPTIONAL)
+   Field: FORGE_GITHUB_TOKEN
+   Format: ghp_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+   Action: Leave empty if not needed, or add valid GitHub token
+
+4. Docker Registry Credentials (CHANGEME)
+   Fields: registry-username, registry-password
+   Action: Update with valid registry.e2enetworks.net credentials
+
+5. Docker Config JSON (CHANGEME)
+   Secret: tinai-registry-credentials
+   Action: Update with base64-encoded docker config
+   Generate with:
+     echo -n "username:password" | base64
+   
+   Example config structure:
+     {
+       "auths": {
+         "registry.e2enetworks.net": {
+           "username": "your-username",
+           "password": "your-password",
+           "auth": "base64-encoded-username:password"
+         }
+       }
+     }
+
+================================================================================
+DATABASE SETUP
+================================================================================
+
+Before deployment, ensure PostgreSQL database is ready:
+
+  [ ] Connect to PostgreSQL (tinai-system namespace)
+      kubectl exec -it pod/cnpg-cluster-1 -n tinai-system -- psql -U postgres
+
+  [ ] Create database and user (run in psql):
+      CREATE DATABASE tinai_forge;
+      CREATE USER forge WITH PASSWORD 'YOUR_PASSWORD';
+      GRANT ALL PRIVILEGES ON DATABASE tinai_forge TO forge;
+      \c tinai_forge
+      GRANT ALL ON SCHEMA public TO forge;
+      \q
+
+  [ ] Verify connection works:
+      kubectl run -it --rm psql-test --image=postgres:15 \
+        --restart=Never -- \
+        psql postgresql://forge:PASSWORD@cnpg-cluster-rw.tinai-system:5432/tinai_forge -c "\dt"
+
+================================================================================
+DNS AND INGRESS SETUP
+================================================================================
+
+  [ ] Add DNS entry for forge.tinai.cloud
+      Type: A (or CNAME if using alias)
+      Target: Ingress controller IP address
+      TTL: 300 (or standard)
+
+  [ ] Verify DNS resolution:
+      nslookup forge.tinai.cloud
+
+  [ ] Create basic authentication secret for ingress:
+      Generate password file:
+        htpasswd -c auth username
+        (when prompted, enter password)
+      
+      Create secret:
+        kubectl create secret generic tinai-forge-basic-auth \
+          -n tinai-forge \
+          --from-file=auth
+
+  [ ] Verify secret was created:
+      kubectl get secret tinai-forge-basic-auth -n tinai-forge
+
+================================================================================
+DEPLOYMENT EXECUTION
+================================================================================
+
+Option A: Automated Deployment (RECOMMENDED)
+  [ ] cd /sessions/serene-awesome-cerf/mnt/tinai/tinai-infra/k8s/forge/
+  [ ] nano 02-secrets.yaml              (update with real values)
+  [ ] ./deploy.sh                       (run automated deployment)
+  [ ] Watch output for any errors
+  [ ] Script will wait for deployment to be ready
+
+Option B: Manual Step-by-Step Deployment
+  [ ] cd /sessions/serene-awesome-cerf/mnt/tinai/tinai-infra/k8s/forge/
+  [ ] nano 02-secrets.yaml              (update with real values)
+  [ ] kubectl apply -f 00-namespace.yaml
+  [ ] kubectl apply -f 01-rbac.yaml
+  [ ] kubectl apply -f 02-secrets.yaml
+  [ ] kubectl apply -f 03-configmap.yaml
+  [ ] kubectl apply -f 06-networkpolicy.yaml
+  [ ] kubectl apply -f 07-cronjob.yaml
+  [ ] kubectl apply -f 05-service.yaml
+  [ ] kubectl apply -f 08-ingress.yaml
+  [ ] kubectl apply -f 04-deployment.yaml
+
+Option C: Helm Deployment
+  [ ] cd /sessions/serene-awesome-cerf/mnt/tinai/tinai-infra/k8s/forge/
+  [ ] nano helm/values.yaml             (update with real values)
+  [ ] helm install tinai-forge ./helm \
+      --namespace tinai-forge \
+      --set image.tag=latest
+
+================================================================================
+POST-DEPLOYMENT VERIFICATION
+================================================================================
+
+Namespace Creation:
+  [ ] kubectl get namespace tinai-forge
+  [ ] kubectl get namespace tinai-forge-test
+
+RBAC Setup:
+  [ ] kubectl get serviceaccount -n tinai-forge
+  [ ] kubectl get clusterrole tinai-forge-operator
+  [ ] kubectl get clusterrolebinding tinai-forge-operator
+
+Secrets and Configuration:
+  [ ] kubectl get secrets -n tinai-forge
+  [ ] kubectl get configmap -n tinai-forge
+  [ ] kubectl get secret tinai-forge-config -n tinai-forge -o jsonpath='{.data.FORGE_API_KEY}' | base64 -d
+
+Deployment Status:
+  [ ] kubectl get pods -n tinai-forge
+      Expected: tinai-forge pod in Running state
+  [ ] kubectl rollout status deployment/tinai-forge -n tinai-forge
+      Expected: deployment "tinai-forge" successfully rolled out
+
+Service Status:
+  [ ] kubectl get service -n tinai-forge
+  [ ] kubectl get service -n tinai-system | grep tinai-forge-internal
+
+Ingress Status:
+  [ ] kubectl get ingress -n tinai-forge
+  [ ] kubectl describe ingress tinai-forge -n tinai-forge
+  [ ] Check for certificate status (should show valid cert)
+
+Health Check:
+  [ ] kubectl port-forward -n tinai-forge svc/tinai-forge 8090:8090
+  [ ] curl -u username:password http://localhost:8090/healthz
+      (use credentials from basic auth setup)
+      Expected: 200 OK response
+
+Pod Logs:
+  [ ] kubectl logs -n tinai-forge deploy/tinai-forge
+      Expected: Application startup logs, no errors
+  [ ] kubectl logs -n tinai-forge deploy/tinai-forge -f
+      (press Ctrl-C to exit)
+
+Metrics Endpoint:
+  [ ] curl -u username:password http://localhost:8090/metrics | head -20
+      Expected: Prometheus metrics in OpenMetrics format
+
+Network Policy Verification:
+  [ ] kubectl get networkpolicy -n tinai-forge
+  [ ] kubectl get networkpolicy -n tinai-forge-test
+  [ ] kubectl describe networkpolicy tinai-forge-egress -n tinai-forge
+
+CronJob Status:
+  [ ] kubectl get cronjob -n tinai-forge
+  [ ] kubectl describe cronjob tinai-forge-version-check -n tinai-forge
+
+Database Connectivity:
+  [ ] kubectl logs -n tinai-forge deploy/tinai-forge | grep -i "database"
+      Expected: Successful database connection message
+
+================================================================================
+EXTERNAL ACCESS TESTING
+================================================================================
+
+  [ ] Wait for Let's Encrypt certificate (usually 1-2 minutes)
+  [ ] curl -v https://forge.tinai.cloud/healthz
+      Expected: Certificate valid, 401 Unauthorized (auth required)
+
+  [ ] curl -v -u username:password https://forge.tinai.cloud/healthz
+      Expected: 200 OK response
+
+  [ ] curl -v -u username:password https://forge.tinai.cloud/metrics
+      Expected: Prometheus metrics response
+
+================================================================================
+MONITORING SETUP
+================================================================================
+
+  [ ] Configure Prometheus scraping:
+      Add to prometheus.yml:
+        - job_name: 'tinai-forge'
+          kubernetes_sd_configs:
+            - role: pod
+              namespaces:
+                names:
+                  - tinai-forge
+          relabel_configs:
+            - source_labels: [__meta_kubernetes_pod_label_app]
+              action: keep
+              regex: tinai-forge
+
+  [ ] Restart Prometheus:
+      kubectl rollout restart -n monitoring deployment/prometheus
+
+  [ ] Verify metrics in Prometheus UI:
+      Navigate to: http://prometheus-ip:9090/targets
+      Expected: tinai-forge target showing green/UP
+
+================================================================================
+TROUBLESHOOTING COMMON ISSUES
+================================================================================
+
+Pod Not Starting (Pending state):
+  [ ] Check pod events:
+      kubectl describe pod -n tinai-forge -l app=tinai-forge
+  [ ] Check node capacity:
+      kubectl top nodes
+  [ ] Check resource requests vs available:
+      kubectl describe nodes
+
+Image Pull Errors (ImagePullBackOff):
+  [ ] Verify image exists:
+      docker pull registry.e2enetworks.net/tinai/tinai-forge:latest
+  [ ] Check registry credentials secret:
+      kubectl get secret tinai-registry-credentials -n tinai-forge -o yaml
+  [ ] Re-create secret if needed:
+      kubectl delete secret tinai-registry-credentials -n tinai-forge
+      kubectl create secret docker-registry tinai-registry-credentials \
+        --docker-server=registry.e2enetworks.net \
+        --docker-username=USERNAME \
+        --docker-password=PASSWORD \
+        -n tinai-forge
+
+Database Connection Errors:
+  [ ] Verify PostgreSQL is running:
+      kubectl get pod -n tinai-system | grep cnpg
+  [ ] Check connection string in secret:
+      kubectl get secret tinai-forge-config -n tinai-forge \
+        -o jsonpath='{.data.FORGE_DB_URL}' | base64 -d
+  [ ] Test connectivity:
+      kubectl run -it --rm psql-test --image=postgres:15 \
+        --restart=Never -- \
+        psql postgresql://forge:PASSWORD@cnpg-cluster-rw.tinai-system:5432/tinai_forge -c "SELECT version();"
+
+Ingress/Certificate Issues:
+  [ ] Check ingress status:
+      kubectl describe ingress tinai-forge -n tinai-forge
+  [ ] Check certificate:
+      kubectl get certificate -n tinai-forge
+  [ ] Check cert-manager logs:
+      kubectl logs -n cert-manager -l app=cert-manager -f
+  [ ] Delete and recreate ingress:
+      kubectl delete ingress tinai-forge -n tinai-forge
+      kubectl apply -f 08-ingress.yaml
+
+Network Policy Blocking Traffic:
+  [ ] Temporarily disable network policies (for testing only):
+      kubectl delete networkpolicy -n tinai-forge --all
+      kubectl delete networkpolicy -n tinai-forge-test --all
+  [ ] If traffic works without policies, re-apply and refine rules
+  [ ] Check ingress/egress rules:
+      kubectl describe networkpolicy tinai-forge-egress -n tinai-forge
+
+================================================================================
+CONFIGURATION CHANGES
+================================================================================
+
+To update configuration after deployment:
+
+  [ ] Edit ConfigMap:
+      kubectl edit configmap tinai-forge-config -n tinai-forge
+      (or: nano 03-configmap.yaml && kubectl apply -f 03-configmap.yaml)
+
+  [ ] Restart deployment to apply changes:
+      kubectl rollout restart deployment/tinai-forge -n tinai-forge
+
+  [ ] Verify restart:
+      kubectl rollout status deployment/tinai-forge -n tinai-forge
+
+To update secrets:
+
+  [ ] Delete and recreate secret:
+      kubectl delete secret tinai-forge-config -n tinai-forge
+      kubectl apply -f 02-secrets.yaml
+
+  [ ] Restart deployment:
+      kubectl rollout restart deployment/tinai-forge -n tinai-forge
+
+To update image:
+
+  [ ] Update image reference:
+      kubectl set image deployment/tinai-forge \
+        -n tinai-forge \
+        forge=registry.e2enetworks.net/tinai/tinai-forge:v1.0.0
+
+  [ ] Track rollout:
+      kubectl rollout status deployment/tinai-forge -n tinai-forge
+
+================================================================================
+BACKUP AND DISASTER RECOVERY
+================================================================================
+
+Backup all resources:
+  [ ] kubectl get all -n tinai-forge -o yaml > forge-backup-$(date +%Y%m%d).yaml
+  [ ] kubectl get secret -n tinai-forge -o yaml > forge-secrets-backup-$(date +%Y%m%d).yaml
+      (secure this file - contains sensitive data)
+
+Database backup:
+  [ ] kubectl exec -n tinai-system pod/cnpg-cluster-1 -- \
+      pg_dump -U postgres tinai_forge > tinai_forge_backup_$(date +%Y%m%d).sql
+
+Recovery procedure:
+  1. Delete deployment: kubectl delete deploy -n tinai-forge tinai-forge
+  2. Delete namespace: kubectl delete namespace tinai-forge tinai-forge-test
+  3. Restore from manifests: kubectl apply -f *.yaml
+  4. Restore database if needed
+  5. Verify deployment
+
+================================================================================
+FINAL CHECKLIST
+================================================================================
+
+Before considering deployment complete:
+
+  [ ] Pod is Running and Ready
+  [ ] Health endpoint responds (200 OK)
+  [ ] Metrics endpoint accessible
+  [ ] Database connected
+  [ ] HTTPS ingress working
+  [ ] Basic auth protecting admin endpoints
+  [ ] CronJob scheduled
+  [ ] NetworkPolicies in place
+  [ ] Prometheus scraping metrics
+  [ ] Logs show no errors
+  [ ] All resources in correct namespaces
+  [ ] Service discovery working
+  [ ] Image pull secrets configured
+  [ ] RBAC permissions correct
+  [ ] Resource quotas observed
+
+================================================================================
+POST-DEPLOYMENT MAINTENANCE
+================================================================================
+
+Daily Tasks:
+  [ ] Check pod logs for errors: kubectl logs -n tinai-forge deploy/tinai-forge
+  [ ] Monitor resource usage: kubectl top pod -n tinai-forge
+  [ ] Verify health endpoint still responding
+
+Weekly Tasks:
+  [ ] Review CronJob execution: kubectl get jobs -n tinai-forge
+  [ ] Check for any pod restarts: kubectl describe pod -n tinai-forge
+  [ ] Verify certificate expiry: kubectl get certificate -n tinai-forge
+  [ ] Review Prometheus metrics
+
+Monthly Tasks:
+  [ ] Database maintenance and backups
+  [ ] Update container image if new version available
+  [ ] Review and rotate credentials if needed
+  [ ] Capacity planning check
+
+================================================================================
+SUPPORT AND DOCUMENTATION
+================================================================================
+
+For more information, see:
+  - README.md - Comprehensive deployment and operations guide
+  - MANIFEST_SUMMARY.txt - Detailed manifest specifications
+  - INDEX.md - Quick reference and file index
+  - This file - Deployment checklist
+
+Contact:
+  - TinAI Admin: admin@tinai.cloud
+  - Repository: https://github.com/tinai/tinai-forge
+
+================================================================================
+DEPLOYMENT NOTES
+================================================================================
+
+Date Deployment Started: _____________________
+Deployment Completed: _____________________
+Deployed By: _____________________
+Notes: ________________________________________________________________
+       ________________________________________________________________
+
+Issues Encountered: ____________________________________________________
+                    ____________________________________________________
+
+Resolutions Applied: ___________________________________________________
+                      ___________________________________________________
+
+================================================================================

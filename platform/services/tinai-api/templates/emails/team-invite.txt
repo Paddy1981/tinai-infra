@@ -1,0 +1,23 @@
+You're invited to join a team on TinAI Cloud!
+=============================================
+
+{{inviterName}} has invited you to join their team on TinAI Cloud.
+
+Team: {{teamName}}
+Role: {{roleName}}
+Invited by: {{inviterName}}
+
+Accept Invitation: {{acceptInviteUrl}}
+
+What happens after you accept?
+-------------------------------
+• You'll get access to {{teamName}}'s projects and deployments
+• You can collaborate with other team members in real-time
+• Your role is {{roleName}} — {{roleDescription}}
+• You can manage your membership anytime from team settings
+
+This invitation will expire in 7 days. If you don't want to join this team, you can safely ignore this email.
+
+---
+© 2025 TinAI Cloud. All rights reserved.
+Unsubscribe: {{unsubscribeUrl}}

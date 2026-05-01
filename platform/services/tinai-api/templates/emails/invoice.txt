@@ -1,0 +1,47 @@
+Invoice #{{invoiceNumber}}
+========================
+
+Your TinAI Cloud invoice for {{billingPeriod}}
+
+Invoice Details
+---------------
+Invoice Date: {{invoiceDate}}
+Due Date: {{dueDate}}
+Billing Period: {{billingPeriod}}
+Team: {{teamName}}
+
+Items
+-----
+{{#each items}}
+{{this.description}}
+{{#if this.details}}({{this.details}}){{/if}}
+{{this.amount}}
+
+{{/each}}
+
+Summary
+-------
+Subtotal: {{subtotal}}
+{{#if discount}}
+Discount ({{discountCode}}): -{{discount}}
+{{/if}}
+{{#if gstRate}}
+GST ({{gstRate}}%): {{gstAmount}}
+{{/if}}
+------------------------
+Total Amount Due: {{totalAmount}}
+
+Pay Now: {{paymentUrl}}
+Download PDF: {{downloadPdfUrl}}
+
+Payment Terms
+-------------
+Due within 7 days. Late payments may result in service interruption.
+All amounts are in INR (Indian Rupees).
+
+Questions about this invoice?
+Contact us at: {{billingEmail}}
+
+---
+© 2025 TinAI Cloud. All rights reserved.
+Unsubscribe: {{unsubscribeUrl}}

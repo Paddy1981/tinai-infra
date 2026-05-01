@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Received - TinAI Cloud</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background-color: #f5f5f5;
+      line-height: 1.6;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      background-color: #ffffff;
+    }
+    .header {
+      background: linear-gradient(135deg, #07070F 0%, #14142A 100%);
+      padding: 40px 20px;
+      text-align: center;
+    }
+    .logo-mark {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 16px;
+    }
+    .wordmark {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: #EDE9E1;
+      margin: 0;
+    }
+    .wordmark-suffix {
+      font-weight: 300;
+      opacity: 0.38;
+    }
+    .success-banner {
+      background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+      padding: 30px 20px;
+      text-align: center;
+      color: #ffffff;
+    }
+    .success-icon {
+      font-size: 64px;
+      margin-bottom: 12px;
+    }
+    .success-title {
+      font-size: 28px;
+      font-weight: 600;
+      margin: 0 0 8px 0;
+    }
+    .success-subtitle {
+      font-size: 16px;
+      opacity: 0.9;
+      margin: 0;
+    }
+    .content {
+      padding: 40px 30px;
+      color: #1A1818;
+    }
+    .receipt-box {
+      background-color: #F5F0E8;
+      border-radius: 8px;
+      padding: 24px;
+      margin: 30px 0;
+    }
+    .receipt-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid #E5E5E5;
+    }
+    .receipt-row:last-child {
+      border-bottom: none;
+      padding-top: 16px;
+      margin-top: 8px;
+      border-top: 2px solid #14142A;
+    }
+    .receipt-label {
+      font-size: 14px;
+      color: #4A4A4A;
+      font-weight: 500;
+    }
+    .receipt-value {
+      font-size: 14px;
+      color: #1A1818;
+      font-weight: 600;
+      text-align: right;
+    }
+    .receipt-row:last-child .receipt-label {
+      font-size: 16px;
+      color: #1A1818;
+    }
+    .receipt-row:last-child .receipt-value {
+      font-size: 20px;
+      color: #F97316;
+    }
+    .payment-method {
+      background-color: #ffffff;
+      border-radius: 6px;
+      padding: 16px;
+      margin: 16px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .payment-method-label {
+      font-size: 13px;
+      color: #4A4A4A;
+    }
+    .payment-method-value {
+      font-size: 14px;
+      color: #1A1818;
+      font-weight: 600;
+    }
+    .cta-button {
+      display: inline-block;
+      background-color: #F97316;
+      color: #ffffff;
+      text-decoration: none;
+      padding: 14px 32px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 16px;
+      margin: 20px 8px;
+      transition: background-color 0.2s;
+    }
+    .cta-button:hover {
+      background-color: #C2410C;
+    }
+    .plan-status {
+      background-color: #DBEAFE;
+      border-left: 4px solid #3B82F6;
+      border-radius: 4px;
+      padding: 20px;
+      margin: 30px 0;
+    }
+    .plan-status h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0 0 12px 0;
+      color: #1E40AF;
+    }
+    .plan-details {
+      font-size: 14px;
+      color: #1E3A8A;
+      margin-bottom: 8px;
+    }
+    .plan-details strong {
+      color: #1E40AF;
+    }
+    .thank-you {
+      text-align: center;
+      margin: 30px 0;
+      padding: 24px;
+      background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%);
+      border-radius: 8px;
+    }
+    .thank-you-text {
+      font-size: 16px;
+      color: #78350F;
+      margin: 0;
+      font-weight: 500;
+    }
+    .footer {
+      background-color: #07070F;
+      padding: 30px 20px;
+      text-align: center;
+      color: #EDE9E1;
+    }
+    .footer-text {
+      font-size: 12px;
+      opacity: 0.7;
+      margin: 8px 0;
+    }
+    .unsubscribe {
+      color: #F97316;
+      text-decoration: none;
+      font-size: 12px;
+    }
+    .unsubscribe:hover {
+      text-decoration: underline;
+    }
+    @media only screen and (max-width: 600px) {
+      .content {
+        padding: 30px 20px;
+      }
+      .success-icon {
+        font-size: 48px;
+      }
+      .success-title {
+        font-size: 24px;
+      }
+      .cta-button {
+        display: block;
+        margin: 12px 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <svg class="logo-mark" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 8,4 H 24 Q 29,4 29,9 V 14 H 20 V 28 Q 20,32 16,32 Q 12,32 12,28 V 14 H 3 V 9 Q 3,4 8,4 Z" fill="#F97316"/>
+      </svg>
+      <h1 class="wordmark">tinai<span class="wordmark-suffix">.cloud</span></h1>
+    </div>
+
+    <!-- Success Banner -->
+    <div class="success-banner">
+      <div class="success-icon">✅</div>
+      <h2 class="success-title">Payment Received</h2>
+      <p class="success-subtitle">Thank you for your payment!</p>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+      <div class="receipt-box">
+        <div class="receipt-row">
+          <span class="receipt-label">Receipt Number</span>
+          <span class="receipt-value">{{receiptNumber}}</span>
+        </div>
+        <div class="receipt-row">
+          <span class="receipt-label">Payment Date</span>
+          <span class="receipt-value">{{paymentDate}}</span>
+        </div>
+        <div class="receipt-row">
+          <span class="receipt-label">Invoice Number</span>
+          <span class="receipt-value">{{invoiceNumber}}</span>
+        </div>
+        <div class="receipt-row">
+          <span class="receipt-label">Description</span>
+          <span class="receipt-value">{{description}}</span>
+        </div>
+
+        <div class="payment-method">
+          <span class="payment-method-label">Payment Method</span>
+          <span class="payment-method-value">{{paymentMethod}}</span>
+        </div>
+
+        <div class="receipt-row">
+          <span class="receipt-label">Amount Paid</span>
+          <span class="receipt-value">{{amountPaid}}</span>
+        </div>
+      </div>
+
+      <center>
+        <a href="{{downloadReceiptUrl}}" class="cta-button">Download Receipt</a>
+        <a href="{{dashboardUrl}}" class="cta-button" style="background-color: #14142A;">Go to Dashboard</a>
+      </center>
+
+      <div class="plan-status">
+        <h3>Your Current Plan</h3>
+        <p class="plan-details"><strong>Plan:</strong> {{planName}}</p>
+        <p class="plan-details"><strong>Status:</strong> Active</p>
+        <p class="plan-details"><strong>Next Billing Date:</strong> {{nextBillingDate}}</p>
+        <p class="plan-details"><strong>Monthly Limit:</strong> {{planLimits}}</p>
+      </div>
+
+      <div class="thank-you">
+        <p class="thank-you-text">
+          🙏 Thank you for being a valued TinAI Cloud customer!
+        </p>
+      </div>
+
+      <p style="font-size: 13px; color: #4A4A4A; text-align: center; margin-top: 30px;">
+        Questions about your payment?
+        <a href="mailto:{{billingEmail}}" style="color: #F97316; text-decoration: none;">Contact billing support</a>
+      </p>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <p class="footer-text">© 2025 TinAI Cloud. All rights reserved.</p>
+      <p class="footer-text">
+        <a href="{{unsubscribeUrl}}" class="unsubscribe">Unsubscribe</a> |
+        <a href="{{preferencesUrl}}" class="unsubscribe">Email Preferences</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>

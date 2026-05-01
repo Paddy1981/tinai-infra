@@ -1,0 +1,55 @@
+---
+# NVIDIA Device Plugin DaemonSet
+# Advertises nvidia.com/gpu resources on GPU nodes so K8s can schedule
+# pods that request GPU capacity.
+#
+# Targets only nodes labelled tinai.cloud/gpu=true via nodeSelector.
+# See node-labels.md for how to label and taint GPU nodes.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-device-plugin-daemonset
+  namespace: tinai-instances
+  labels:
+    tinai.cloud/managed-by: tinai-instances
+spec:
+  selector:
+    matchLabels:
+      app: nvidia-device-plugin
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: nvidia-device-plugin
+    spec:
+      # Only schedule on nodes we have explicitly marked as GPU nodes.
+      nodeSelector:
+        tinai.cloud/gpu: "true"
+
+      # Tolerate the GPU taint so the plugin can run on GPU-tainted nodes.
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+
+      priorityClassName: system-node-critical
+
+      containers:
+        - name: nvidia-device-plugin-ctr
+          image: nvcr.io/nvidia/k8s-device-plugin:v0.15.0
+          env:
+            - name: FAIL_ON_INIT_ERROR
+              value: "false"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: device-plugin
+              mountPath: /var/lib/kubelet/device-plugins
+
+      volumes:
+        - name: device-plugin
+          hostPath:
+            path: /var/lib/kubelet/device-plugins

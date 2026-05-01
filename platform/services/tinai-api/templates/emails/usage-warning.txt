@@ -1,0 +1,46 @@
+Usage Limit Warning ⚠️
+=====================
+
+You've reached {{usagePercentage}}% of your plan limit
+
+Your team {{teamName}} is approaching the usage limits for your current plan.
+
+Current Usage
+-------------
+Current: {{currentUsage}}
+Limit: {{planLimit}}
+Remaining: {{remainingUsage}}
+
+Usage Breakdown
+---------------
+• Deployments: {{deploymentCount}} / {{deploymentLimit}}
+• Build Minutes: {{buildMinutes}} / {{buildMinutesLimit}}
+• Bandwidth: {{bandwidth}} / {{bandwidthLimit}}
+• Function Calls: {{functionCalls}} / {{functionCallsLimit}}
+
+What happens when you reach the limit?
+---------------------------------------
+Your deployments and services will continue to run, but new deployments may be paused until you upgrade or until your billing cycle resets on {{billingResetDate}}.
+
+Upgrade Options
+---------------
+
+Pro Plan - ₹2,999/month
+• 100 deployments/mo
+• 1000 build mins
+• 500GB bandwidth
+
+Business Plan - ₹9,999/month
+• Unlimited deployments
+• 3000 build mins
+• 2TB bandwidth
+
+Upgrade Now: {{upgradeUrl}}
+View Dashboard: {{dashboardUrl}}
+
+Need help choosing the right plan?
+Talk to our team: {{salesEmail}}
+
+---
+© 2025 TinAI Cloud. All rights reserved.
+Unsubscribe: {{unsubscribeUrl}}

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Team Invitation - TinAI Cloud</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background-color: #f5f5f5;
+      line-height: 1.6;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      background-color: #ffffff;
+    }
+    .header {
+      background: linear-gradient(135deg, #07070F 0%, #14142A 100%);
+      padding: 40px 20px;
+      text-align: center;
+    }
+    .logo-mark {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 16px;
+    }
+    .wordmark {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: #EDE9E1;
+      margin: 0;
+    }
+    .wordmark-suffix {
+      font-weight: 300;
+      opacity: 0.38;
+    }
+    .content {
+      padding: 40px 30px;
+      color: #1A1818;
+    }
+    .greeting {
+      font-size: 24px;
+      font-weight: 600;
+      margin: 0 0 20px 0;
+      color: #1A1818;
+    }
+    .intro-text {
+      font-size: 16px;
+      color: #4A4A4A;
+      margin-bottom: 30px;
+    }
+    .team-card {
+      background-color: #F5F0E8;
+      border-radius: 8px;
+      padding: 24px;
+      margin: 30px 0;
+      text-align: center;
+    }
+    .team-icon {
+      width: 64px;
+      height: 64px;
+      background-color: #F97316;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
+      font-size: 28px;
+      color: #ffffff;
+      font-weight: 600;
+    }
+    .team-name {
+      font-size: 22px;
+      font-weight: 600;
+      color: #1A1818;
+      margin-bottom: 8px;
+    }
+    .inviter-name {
+      font-size: 14px;
+      color: #4A4A4A;
+      margin-bottom: 4px;
+    }
+    .role-badge {
+      display: inline-block;
+      background-color: #FDBA74;
+      color: #1A1818;
+      padding: 4px 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-top: 8px;
+    }
+    .cta-button {
+      display: inline-block;
+      background-color: #F97316;
+      color: #ffffff;
+      text-decoration: none;
+      padding: 14px 32px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 16px;
+      margin: 20px 0;
+      transition: background-color 0.2s;
+    }
+    .cta-button:hover {
+      background-color: #C2410C;
+    }
+    .info-box {
+      background-color: #F5F0E8;
+      border-left: 4px solid #F97316;
+      border-radius: 4px;
+      padding: 16px 20px;
+      margin: 30px 0;
+    }
+    .info-box h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0 0 12px 0;
+      color: #1A1818;
+    }
+    .info-box ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+    .info-box li {
+      font-size: 14px;
+      color: #4A4A4A;
+      margin-bottom: 8px;
+    }
+    .footer {
+      background-color: #07070F;
+      padding: 30px 20px;
+      text-align: center;
+      color: #EDE9E1;
+    }
+    .footer-text {
+      font-size: 12px;
+      opacity: 0.7;
+      margin: 8px 0;
+    }
+    .unsubscribe {
+      color: #F97316;
+      text-decoration: none;
+      font-size: 12px;
+    }
+    .unsubscribe:hover {
+      text-decoration: underline;
+    }
+    @media only screen and (max-width: 600px) {
+      .content {
+        padding: 30px 20px;
+      }
+      .greeting {
+        font-size: 20px;
+      }
+      .team-card {
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <svg class="logo-mark" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 8,4 H 24 Q 29,4 29,9 V 14 H 20 V 28 Q 20,32 16,32 Q 12,32 12,28 V 14 H 3 V 9 Q 3,4 8,4 Z" fill="#F97316"/>
+      </svg>
+      <h1 class="wordmark">tinai<span class="wordmark-suffix">.cloud</span></h1>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+      <h2 class="greeting">You're invited to join a team!</h2>
+
+      <p class="intro-text">
+        <strong>{{inviterName}}</strong> has invited you to join their team on TinAI Cloud.
+      </p>
+
+      <div class="team-card">
+        <div class="team-icon">{{teamInitials}}</div>
+        <div class="team-name">{{teamName}}</div>
+        <div class="inviter-name">Invited by {{inviterName}}</div>
+        <div class="role-badge">{{roleName}}</div>
+      </div>
+
+      <center>
+        <a href="{{acceptInviteUrl}}" class="cta-button">Accept Invitation</a>
+      </center>
+
+      <div class="info-box">
+        <h3>What happens after you accept?</h3>
+        <ul>
+          <li>You'll get access to <strong>{{teamName}}</strong>'s projects and deployments</li>
+          <li>You can collaborate with other team members in real-time</li>
+          <li>Your role is <strong>{{roleName}}</strong> — {{roleDescription}}</li>
+          <li>You can manage your membership anytime from team settings</li>
+        </ul>
+      </div>
+
+      <p style="font-size: 14px; color: #4A4A4A; text-align: center; margin-top: 30px;">
+        This invitation will expire in <strong>7 days</strong>. If you don't want to join this team,
+        you can safely ignore this email.
+      </p>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <p class="footer-text">© 2025 TinAI Cloud. All rights reserved.</p>
+      <p class="footer-text">
+        <a href="{{unsubscribeUrl}}" class="unsubscribe">Unsubscribe</a> |
+        <a href="{{preferencesUrl}}" class="unsubscribe">Email Preferences</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>

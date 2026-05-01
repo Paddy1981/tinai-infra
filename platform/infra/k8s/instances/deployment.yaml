@@ -1,0 +1,69 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tinai-instances-sa
+  namespace: tinai-instances
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tinai-instances-role
+rules:
+  - apiGroups: [""]
+    resources: [pods, persistentvolumeclaims, services]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [namespaces]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tinai-instances-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tinai-instances-role
+subjects:
+  - kind: ServiceAccount
+    name: tinai-instances-sa
+    namespace: tinai-instances
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tinai-instances
+  namespace: tinai-instances
+  labels:
+    app: tinai-instances
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tinai-instances
+  template:
+    metadata:
+      labels:
+        app: tinai-instances
+    spec:
+      serviceAccountName: tinai-instances-sa
+      containers:
+        - name: instances
+          image: registry.e2enetworks.net/tinai/instances:latest
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: instances-secrets
+                  key: DATABASE_URL
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi

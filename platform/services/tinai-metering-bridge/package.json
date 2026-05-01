@@ -1,0 +1,22 @@
+{
+  "name": "@tinai/metering-bridge",
+  "version": "0.1.0",
+  "description": "Prometheus → Lago usage metering bridge for Tinai PaaS",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node --test tests/",
+    "health": "curl -s http://localhost:3100/health | jq"
+  },
+  "dependencies": {
+    "fastify": "^4.26.0",
+    "nats": "^2.18.0",
+    "pino": "^8.19.0",
+    "pino-pretty": "^11.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

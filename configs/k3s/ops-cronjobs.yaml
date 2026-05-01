@@ -1,0 +1,174 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  annotations:
+  name: audit-log-export
+  namespace: ops
+spec:
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - command:
+            - node
+            - security/audit-log-export/index.js
+            env:
+            - name: RUN_MODE
+              value: audit-export
+            - name: K8S_AUDIT_LOG_PATH
+              value: /var/log/kubernetes/audit.log
+            envFrom:
+            - configMapRef:
+                name: ops-config
+            - secretRef:
+                name: ops-secrets
+            image: docker.io/tinai/ops-security:v1
+            imagePullPolicy: Never
+            name: audit-export
+            resources:
+              limits:
+                cpu: 200m
+                memory: 256Mi
+              requests:
+                cpu: 50m
+                memory: 128Mi
+            volumeMounts:
+            - mountPath: /var/log/kubernetes
+              name: audit-logs
+              readOnly: true
+          restartPolicy: OnFailure
+          serviceAccount: ops
+          serviceAccountName: ops
+          volumes:
+          - hostPath:
+              path: /var/log/kubernetes
+              type: ""
+            name: audit-logs
+  schedule: 0 1 * * *
+  successfulJobsHistoryLimit: 3
+  suspend: false
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  annotations:
+  name: cve-scanner
+  namespace: ops
+spec:
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - command:
+            - node
+            - security/cve-scanner/index.js
+            envFrom:
+            - configMapRef:
+                name: ops-config
+            - secretRef:
+                name: ops-secrets
+            image: docker.io/tinai/ops-security:v1
+            imagePullPolicy: Never
+            name: cve-scanner
+            resources:
+              limits:
+                cpu: "1"
+                memory: 512Mi
+              requests:
+                cpu: 200m
+                memory: 256Mi
+          restartPolicy: OnFailure
+          serviceAccount: ops
+          serviceAccountName: ops
+  schedule: 0 3 * * 0
+  successfulJobsHistoryLimit: 3
+  suspend: false
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  annotations:
+  name: hpa-reconcile
+  namespace: ops
+spec:
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - command:
+            - node
+            - hpa-scaler/src/index.js
+            env:
+            - name: RUN_MODE
+              value: reconcile
+            envFrom:
+            - configMapRef:
+                name: ops-config
+            - secretRef:
+                name: ops-secrets
+            image: docker.io/tinai/ops-security:v1
+            imagePullPolicy: Never
+            name: hpa-reconcile
+            resources:
+              limits:
+                cpu: 200m
+                memory: 128Mi
+              requests:
+                cpu: 50m
+                memory: 64Mi
+          restartPolicy: OnFailure
+          serviceAccount: ops
+          serviceAccountName: ops
+  schedule: 0 6 * * *
+  successfulJobsHistoryLimit: 3
+  suspend: false
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  annotations:
+  name: network-policy-enforcer
+  namespace: ops
+spec:
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - command:
+            - node
+            - security/network-policy/index.js
+            envFrom:
+            - configMapRef:
+                name: ops-config
+            - secretRef:
+                name: ops-secrets
+            image: docker.io/tinai/ops-security:v1
+            imagePullPolicy: Never
+            name: network-policy
+            resources:
+              limits:
+                cpu: 200m
+                memory: 128Mi
+              requests:
+                cpu: 50m
+                memory: 64Mi
+          restartPolicy: OnFailure
+          serviceAccount: ops
+          serviceAccountName: ops
+  schedule: 30 5 * * *
+  successfulJobsHistoryLimit: 3
+  suspend: false
+---

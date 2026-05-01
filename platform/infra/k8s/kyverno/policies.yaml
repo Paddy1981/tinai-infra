@@ -1,0 +1,180 @@
+# 1. Block privileged containers
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-privileged-containers
+  annotations:
+    policies.kyverno.io/title: Disallow Privileged Containers
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >
+      Privileged containers can do almost anything a host can do.
+      This policy blocks any container with privileged: true.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: check-privileged
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      exclude:
+        any:
+          - resources:
+              namespaces: [kube-system, kyverno]
+      validate:
+        message: "Privileged containers are not allowed."
+        pattern:
+          spec:
+            containers:
+              - =(securityContext):
+                  =(privileged): "false"
+---
+# 2. Require resource limits on all containers
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+  annotations:
+    policies.kyverno.io/title: Require Resource Limits
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >
+      Containers without resource limits can consume unbounded cluster
+      resources. This policy requires CPU and memory limits on all containers.
+spec:
+  validationFailureAction: Audit   # start in Audit; switch to Enforce after baseline
+  background: true
+  rules:
+    - name: require-limits
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces:
+                - tinai-system
+                - tinai-build
+                - tinai-functions
+      validate:
+        message: "CPU and memory limits are required."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"
+---
+# 3. Block containers using latest image tag
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+  annotations:
+    policies.kyverno.io/title: Disallow Latest Tag
+    policies.kyverno.io/severity: medium
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: require-image-tag
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces:
+                - tinai-system
+                - tinai-build
+      validate:
+        message: "Using 'latest' image tag is not allowed. Pin to a specific version."
+        foreach:
+          - list: "request.object.spec.containers"
+            deny:
+              conditions:
+                any:
+                  - key: "{{element.image}}"
+                    operator: Equals
+                    value: "*:latest"
+---
+# 4. Require tinai.cloud/managed-by label on all workloads
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-tinai-labels
+  annotations:
+    policies.kyverno.io/title: Require Tinai Labels
+    policies.kyverno.io/severity: low
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: require-managed-by-label
+      match:
+        any:
+          - resources:
+              kinds: [Deployment, StatefulSet, Job]
+              namespaces:
+                - tinai-system
+                - tinai-build
+      validate:
+        message: "Label 'tinai.cloud/managed-by' is required on all workloads."
+        pattern:
+          metadata:
+            labels:
+              tinai.cloud/managed-by: "?*"
+---
+# 5. Block hostPath volumes (prevent container escape via host filesystem)
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-host-path
+  annotations:
+    policies.kyverno.io/title: Disallow hostPath Volumes
+    policies.kyverno.io/severity: high
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: check-hostpath
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      exclude:
+        any:
+          - resources:
+              namespaces: [kube-system, kyverno, local-path-storage, cert-manager, forgejo, woodpecker]
+      validate:
+        message: "hostPath volumes are not allowed."
+        deny:
+          conditions:
+            any:
+              - key: "{{ (request.object.spec.volumes || `[]`)[].hostPath | length(@) }}"
+                operator: GreaterThan
+                value: "0"
+---
+# 6. Require non-root containers
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-run-as-non-root
+  annotations:
+    policies.kyverno.io/title: Require Non-Root Containers
+    policies.kyverno.io/severity: medium
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: check-non-root
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces:
+                - tinai-system
+                - tinai-functions
+      validate:
+        message: "Containers must not run as root (runAsNonRoot: true required)."
+        pattern:
+          spec:
+            =(securityContext):
+              =(runAsNonRoot): true

@@ -1,0 +1,50 @@
+# CTS Test Runner Job Template
+# This file documents the Job spec that tinai-forge creates dynamically.
+# The forge service creates actual Jobs via k8s client-go using this pattern.
+#
+# To run CTS tests manually:
+#   kubectl create job --from=cronjob/forge-cts-... cts-manual-run -n tinai-forge
+#
+# Or apply this file directly for a one-off test:
+#   kubectl apply -f 11-cts-runner-template.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: forge-cts-forgejo-manual
+  namespace: tinai-forge
+  labels:
+    app: tinai-forge
+    component: cts-runner
+    product: forgejo
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels:
+        app: tinai-forge
+        component: cts-runner
+    spec:
+      serviceAccountName: tinai-forge
+      restartPolicy: Never
+      containers:
+        - name: cts-runner
+          image: registry.e2enetworks.net/tinai/cts-runner:latest
+          env:
+            - name: FORGE_TEST_PRODUCT
+              value: forgejo
+            - name: FORGE_TEST_VERSION
+              value: "v1.22.7"
+            - name: FORGE_TEST_URL
+              value: "http://forgejo.tenant-staging.svc.cluster.local:3000"
+            - name: FORGE_TEST_IMAGE
+              value: "registry.e2enetworks.net/tinai/forgejo:v1.22.7-tinai"
+            - name: TRIVY_SERVER_URL
+              value: "http://trivy-server.tinai-forge.svc.cluster.local:4954"
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"

@@ -1,0 +1,6 @@
+- op: add
+  path: /rules/-
+  value:
+    apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]

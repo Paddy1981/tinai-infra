@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tinai-storage-provisioner
+  namespace: tinai-storage
+  labels:
+    app.kubernetes.io/name: tinai-storage-provisioner
+    app.kubernetes.io/part-of: tinai
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tinai-storage-provisioner
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tinai-storage-provisioner
+        app.kubernetes.io/part-of: tinai
+    spec:
+      serviceAccountName: tinai-storage-provisioner-sa
+      containers:
+        - name: provisioner
+          image: registry.tinai.cloud/tinai/storage-provisioner:latest
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: storage-provisioner-secrets
+                  key: DATABASE_URL
+            - name: MINIO_URL
+              valueFrom:
+                secretKeyRef:
+                  name: storage-provisioner-secrets
+                  key: MINIO_URL
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: storage-provisioner-secrets
+                  key: MINIO_ACCESS_KEY
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: storage-provisioner-secrets
+                  key: MINIO_SECRET_KEY
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
+      securityContext:
+        fsGroup: 1000
+      restartPolicy: Always

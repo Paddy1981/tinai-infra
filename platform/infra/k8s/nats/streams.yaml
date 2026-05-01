@@ -1,0 +1,45 @@
+# JetStream streams for tinai platform
+# Applied via: nats stream add (see bootstrap job below)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nats-streams-config
+  namespace: nats
+data:
+  streams.json: |
+    [
+      {
+        "name": "BUILDS",
+        "subjects": ["builds.>"],
+        "storage": "file",
+        "retention": "limits",
+        "max_age": 604800000000000,
+        "max_msgs": 100000,
+        "description": "Build and deploy events from tinai-build-api"
+      },
+      {
+        "name": "FUNCTIONS",
+        "subjects": ["functions.>"],
+        "storage": "file",
+        "retention": "workqueue",
+        "max_age": 3600000000000,
+        "description": "Function invocation queue for tinai-functions"
+      },
+      {
+        "name": "REALTIME",
+        "subjects": ["tenant.>"],
+        "storage": "memory",
+        "retention": "limits",
+        "max_age": 300000000000,
+        "max_msgs_per_subject": 100,
+        "description": "Real-time tenant events (replaces WebSocket broadcast)"
+      },
+      {
+        "name": "AUDIT",
+        "subjects": ["audit.>"],
+        "storage": "file",
+        "retention": "limits",
+        "max_age": 2592000000000000,
+        "description": "Audit log stream — 30-day retention"
+      }
+    ]

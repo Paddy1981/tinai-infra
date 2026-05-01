@@ -1,0 +1,309 @@
+# =============================================================================
+# TinAI Cloud - Ubuntu x86_64 Production Stack
+# Server: E2E Networks Delhi (LEGACY — use K3s manifests for E2E deployment)
+# =============================================================================
+
+networks:
+  tinai:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  forgejo_data:
+  minio_data:
+  forgejo_runner_data:
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # INFRASTRUCTURE
+  # ---------------------------------------------------------------------------
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: tinai-postgres
+    restart: unless-stopped
+    networks: [tinai]
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: tinai
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tinai_local_pass}
+      POSTGRES_DB: tinai
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tinai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: tinai-redis
+    restart: unless-stopped
+    networks: [tinai]
+    ports:
+      - "127.0.0.1:6379:6379"
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass iryfK1KZpyziEuazefqYmmrBCdI=
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  forgejo:
+    image: codeberg.org/forgejo/forgejo:9
+    container_name: tinai-forgejo
+    restart: unless-stopped
+    networks: [tinai]
+    ports:
+      - "3010:3000"
+      - "2222:22"
+    environment:
+      USER_UID: 1000
+      USER_GID: 1000
+      FORGEJO__database__DB_TYPE: postgres
+      FORGEJO__database__HOST: postgres:5432
+      FORGEJO__database__NAME: forgejo
+      FORGEJO__database__USER: tinai
+      FORGEJO__database__PASSWD: ${POSTGRES_PASSWORD:-tinai_local_pass}
+      FORGEJO__server__ROOT_URL: http://localhost:3010
+      FORGEJO__server__SSH_DOMAIN: localhost
+      FORGEJO__server__SSH_PORT: 2222
+    volumes:
+      - forgejo_data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  minio:
+    image: minio/minio:latest
+    container_name: tinai-minio
+    restart: unless-stopped
+    networks: [tinai]
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-tinai-minio-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-YCdOzOuDWA1+Omwht/Un67btBbfPu4/Y}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # CORE SERVICES
+  # ---------------------------------------------------------------------------
+
+  tinai-api:
+    build:
+      context: ./services/tinai-api
+      dockerfile: Dockerfile
+    container_name: tinai-api
+    restart: unless-stopped
+    networks: [tinai]
+    ports:
+      - "127.0.0.1:3001:3001"
+    environment:
+      PORT: "3001"
+      DATABASE_URL: postgresql://tinai:${POSTGRES_PASSWORD:-tinai_local_pass}@postgres:5432/tinai?sslmode=disable
+      API_URL: http://tinai-api:3001
+      JWT_SECRET: ${JWT_SECRET}
+      REDIS_URL: redis://:iryfK1KZpyziEuazefqYmmrBCdI=@redis:6379
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      FORGEJO_URL: http://tinai-forgejo:3000
+      FORGEJO_ADMIN_TOKEN: ${FORGEJO_ADMIN_TOKEN:-}
+      FORGEJO_WEBHOOK_SECRET: ${FORGEJO_WEBHOOK_SECRET:-local-webhook-secret}
+      FORGE_API_URL: http://tinai-forge:8090
+      FORGE_API_KEY: ${FORGE_API_KEY:-local-forge-api-key}
+      POSTMARK_API_KEY: ${POSTMARK_API_KEY:-}
+      STAGING_NAMESPACE: local
+      BUILD_NAMESPACE: local
+      NODE_ENV: production
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: "9000"
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-tinai-minio-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-YCdOzOuDWA1+Omwht/Un67btBbfPu4/Y}
+      MINIO_BUCKET: tinai-codegen
+      MINIO_USE_SSL: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  tinai-auth:
+    build:
+      context: ./services/tinai-auth
+      dockerfile: Dockerfile
+    container_name: tinai-auth
+    restart: unless-stopped
+    networks: [tinai]
+    ports:
+      - "127.0.0.1:3002:3002"
+    environment:
+      PORT: "3002"
+      DATABASE_URL: postgresql://tinai:${POSTGRES_PASSWORD:-tinai_local_pass}@postgres:5432/tinai?sslmode=disable
+      API_URL: http://tinai-api:3001
+      JWT_SECRET: ${JWT_SECRET}
+      REDIS_URL: redis://:iryfK1KZpyziEuazefqYmmrBCdI=@redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  tinai-functions:
+    build:
+      context: ./services/tinai-functions
+      dockerfile: Dockerfile
+    container_name: tinai-functions
+    restart: unless-stopped
+    networks: [tinai]
+    ports:
+      - "127.0.0.1:3004:3004"
+    environment:
+      PORT: "3004"
+      DATABASE_URL: postgresql://tinai:${POSTGRES_PASSWORD:-tinai_local_pass}@postgres:5432/tinai?sslmode=disable
+      API_URL: http://tinai-api:3001
+      JWT_SECRET: ${JWT_SECRET}
+      REDIS_URL: redis://:iryfK1KZpyziEuazefqYmmrBCdI=@redis:6379
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-tinai-minio-admin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-YCdOzOuDWA1+Omwht/Un67btBbfPu4/Y}
+      MINIO_BUCKET: tinai-functions
+      MINIO_USE_SSL: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  tinai-gateway:
+    build:
+      context: ./services/tinai-gateway
+      dockerfile: Dockerfile
+    container_name: tinai-gateway
+    restart: unless-stopped
+    networks: [tinai]
+    ports:
+      - "127.0.0.1:3005:3005"
+    environment:
+      PORT: "3005"
+      DATABASE_URL: postgresql://tinai:${POSTGRES_PASSWORD:-tinai_local_pass}@postgres:5432/tinai?sslmode=disable
+      API_URL: http://tinai-api:3001
+      JWT_SECRET: ${JWT_SECRET}
+      REDIS_URL: redis://:iryfK1KZpyziEuazefqYmmrBCdI=@redis:6379
+      TINAI_API_URL: http://tinai-api:3001
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  tinai-realtime:
+    build:
+      context: ./services/tinai-realtime
+      dockerfile: Dockerfile
+    container_name: tinai-realtime
+    restart: unless-stopped
+    networks: [tinai]
+    ports:
+      - "127.0.0.1:3006:3006"
+    environment:
+      PORT: "3006"
+      DATABASE_URL: postgresql://tinai:${POSTGRES_PASSWORD:-tinai_local_pass}@postgres:5432/tinai?sslmode=disable
+      API_URL: http://tinai-api:3001
+      JWT_SECRET: ${JWT_SECRET}
+      REDIS_URL: redis://:iryfK1KZpyziEuazefqYmmrBCdI=@redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  tinai-forge:
+    build:
+      context: ./services/tinai-forge
+      dockerfile: Dockerfile
+    container_name: tinai-forge
+    restart: unless-stopped
+    networks: [tinai]
+    ports:
+      - "127.0.0.1:8090:8090"
+    environment:
+      API_PORT: "8090"
+      FORGE_DB_URL: postgresql://tinai:${POSTGRES_PASSWORD:-tinai_local_pass}@postgres:5432/tinai_forge?sslmode=disable
+      FORGE_API_KEY: ${FORGE_API_KEY:-local-forge-api-key}
+      FORGE_GITHUB_TOKEN: ${FORGE_GITHUB_TOKEN:-}
+      TINAI_API_URL: http://tinai-api:3001
+      REGISTRY_HOST: ${REGISTRY_HOST:-registry.e2enetworks.net}
+      REGISTRY_PROJECT: tinai
+      CHECK_INTERVAL_HOURS: "6"
+      AUTO_BUILD_PATCH: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  tinai-dashboard:
+    build:
+      context: ./services/tinai-dashboard
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://api.tinai.cloud
+    container_name: tinai-dashboard
+    restart: unless-stopped
+    networks: [tinai]
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: https://api.tinai.cloud
+      NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-wss://ws.tinai.cloud}
+      API_URL: http://tinai-api:3001
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      - tinai-api
+      - tinai-gateway
+
+
+  # ---------------------------------------------------------------------------
+  # DEVELOPER PORTAL (dev.tinai.cloud)
+  # ---------------------------------------------------------------------------
+
+  tinai-devportal:
+    build:
+      context: ./services/tinai-devportal
+      dockerfile: Dockerfile
+    container_name: tinai-devportal
+    restart: unless-stopped
+    networks: [tinai]
+    ports:
+      - "127.0.0.1:3030:3030"
+    environment:
+      NODE_ENV: production
+  # ---------------------------------------------------------------------------
+  # FORGEJO ACTIONS RUNNER
+  # ---------------------------------------------------------------------------
+
+  forgejo-runner:
+    image: code.forgejo.org/forgejo/runner:6.3.1
+    container_name: tinai-forgejo-runner
+    restart: unless-stopped
+    networks: [tinai]
+    user: root
+    command: ["/bin/forgejo-runner", "daemon", "--config", "/data/config.yml"]
+    volumes:
+      - forgejo_runner_data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - forgejo

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 48" width="200" height="48">
+  <defs>
+    <linearGradient id="tinai-gradient-large" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#06B6D4;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0891B2;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect x="0" y="0" width="200" height="48" fill="transparent"/>
+
+  <!-- Icon background -->
+  <rect x="0" y="0" width="48" height="48" rx="8" fill="#0F172A"/>
+
+  <!-- Icon T letter -->
+  <text x="24" y="28" dominant-baseline="middle" text-anchor="middle"
+        font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="28"
+        fill="url(#tinai-gradient-large)">T</text>
+
+  <!-- Icon bottom accent -->
+  <rect x="8" y="36" width="32" height="3" rx="1.5" fill="url(#tinai-gradient-large)"/>
+
+  <!-- "TinAI Insights" text -->
+  <text x="62" y="24" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="20"
+        fill="#06B6D4">TinAI</text>
+  <text x="62" y="42" font-family="Arial, Helvetica, sans-serif" font-weight="400" font-size="12"
+        fill="#0891B2">Insights</text>
+</svg>

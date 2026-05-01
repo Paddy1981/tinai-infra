@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your Invoice - TinAI Cloud</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background-color: #f5f5f5;
+      line-height: 1.6;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      background-color: #ffffff;
+    }
+    .header {
+      background: linear-gradient(135deg, #07070F 0%, #14142A 100%);
+      padding: 40px 20px;
+      text-align: center;
+    }
+    .logo-mark {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 16px;
+    }
+    .wordmark {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: #EDE9E1;
+      margin: 0;
+    }
+    .wordmark-suffix {
+      font-weight: 300;
+      opacity: 0.38;
+    }
+    .content {
+      padding: 40px 30px;
+      color: #1A1818;
+    }
+    .invoice-title {
+      font-size: 24px;
+      font-weight: 600;
+      margin: 0 0 8px 0;
+      color: #1A1818;
+    }
+    .invoice-subtitle {
+      font-size: 16px;
+      color: #4A4A4A;
+      margin-bottom: 30px;
+    }
+    .invoice-header {
+      background-color: #F5F0E8;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+    .invoice-meta {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .meta-label {
+      font-size: 13px;
+      color: #4A4A4A;
+      font-weight: 500;
+    }
+    .meta-value {
+      font-size: 13px;
+      color: #1A1818;
+      font-weight: 600;
+    }
+    .invoice-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 30px 0;
+    }
+    .invoice-table thead {
+      background-color: #14142A;
+      color: #EDE9E1;
+    }
+    .invoice-table th {
+      padding: 12px;
+      text-align: left;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .invoice-table td {
+      padding: 14px 12px;
+      border-bottom: 1px solid #E5E5E5;
+      font-size: 14px;
+    }
+    .invoice-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+    .item-description {
+      color: #1A1818;
+      font-weight: 500;
+    }
+    .item-details {
+      color: #4A4A4A;
+      font-size: 13px;
+      margin-top: 4px;
+    }
+    .amount {
+      text-align: right;
+      font-weight: 600;
+      color: #1A1818;
+    }
+    .totals-section {
+      background-color: #F5F0E8;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 30px 0;
+    }
+    .total-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 0;
+      font-size: 14px;
+    }
+    .total-label {
+      color: #4A4A4A;
+    }
+    .total-value {
+      font-weight: 600;
+      color: #1A1818;
+    }
+    .final-total {
+      padding-top: 16px;
+      margin-top: 16px;
+      border-top: 2px solid #14142A;
+      font-size: 18px;
+    }
+    .final-total .total-label {
+      color: #1A1818;
+      font-weight: 600;
+    }
+    .final-total .total-value {
+      color: #F97316;
+      font-size: 22px;
+    }
+    .cta-button {
+      display: inline-block;
+      background-color: #F97316;
+      color: #ffffff;
+      text-decoration: none;
+      padding: 14px 32px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 16px;
+      margin: 20px 0;
+      transition: background-color 0.2s;
+    }
+    .cta-button:hover {
+      background-color: #C2410C;
+    }
+    .payment-info {
+      background-color: #FEF3C7;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 30px 0;
+      font-size: 14px;
+      color: #78350F;
+    }
+    .payment-info strong {
+      color: #92400E;
+    }
+    .download-link {
+      text-align: center;
+      margin: 20px 0;
+    }
+    .download-link a {
+      color: #F97316;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .download-link a:hover {
+      text-decoration: underline;
+    }
+    .footer {
+      background-color: #07070F;
+      padding: 30px 20px;
+      text-align: center;
+      color: #EDE9E1;
+    }
+    .footer-text {
+      font-size: 12px;
+      opacity: 0.7;
+      margin: 8px 0;
+    }
+    .unsubscribe {
+      color: #F97316;
+      text-decoration: none;
+      font-size: 12px;
+    }
+    .unsubscribe:hover {
+      text-decoration: underline;
+    }
+    @media only screen and (max-width: 600px) {
+      .content {
+        padding: 30px 20px;
+      }
+      .invoice-table {
+        font-size: 13px;
+      }
+      .invoice-table th,
+      .invoice-table td {
+        padding: 10px 8px;
+      }
+      .invoice-meta {
+        flex-direction: column;
+      }
+      .invoice-meta + .invoice-meta {
+        margin-top: 8px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <svg class="logo-mark" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 8,4 H 24 Q 29,4 29,9 V 14 H 20 V 28 Q 20,32 16,32 Q 12,32 12,28 V 14 H 3 V 9 Q 3,4 8,4 Z" fill="#F97316"/>
+      </svg>
+      <h1 class="wordmark">tinai<span class="wordmark-suffix">.cloud</span></h1>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+      <h2 class="invoice-title">Invoice #{{invoiceNumber}}</h2>
+      <p class="invoice-subtitle">Your TinAI Cloud invoice for {{billingPeriod}}</p>
+
+      <div class="invoice-header">
+        <div class="invoice-meta">
+          <span class="meta-label">Invoice Date</span>
+          <span class="meta-value">{{invoiceDate}}</span>
+        </div>
+        <div class="invoice-meta">
+          <span class="meta-label">Due Date</span>
+          <span class="meta-value">{{dueDate}}</span>
+        </div>
+        <div class="invoice-meta">
+          <span class="meta-label">Billing Period</span>
+          <span class="meta-value">{{billingPeriod}}</span>
+        </div>
+        <div class="invoice-meta">
+          <span class="meta-label">Team</span>
+          <span class="meta-value">{{teamName}}</span>
+        </div>
+      </div>
+
+      <table class="invoice-table">
+        <thead>
+          <tr>
+            <th>Description</th>
+            <th style="text-align: right;">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each items}}
+          <tr>
+            <td>
+              <div class="item-description">{{this.description}}</div>
+              {{#if this.details}}
+              <div class="item-details">{{this.details}}</div>
+              {{/if}}
+            </td>
+            <td class="amount">{{this.amount}}</td>
+          </tr>
+          {{/each}}
+        </tbody>
+      </table>
+
+      <div class="totals-section">
+        <div class="total-row">
+          <span class="total-label">Subtotal</span>
+          <span class="total-value">{{subtotal}}</span>
+        </div>
+        {{#if discount}}
+        <div class="total-row">
+          <span class="total-label">Discount ({{discountCode}})</span>
+          <span class="total-value">-{{discount}}</span>
+        </div>
+        {{/if}}
+        {{#if gstRate}}
+        <div class="total-row">
+          <span class="total-label">GST ({{gstRate}}%)</span>
+          <span class="total-value">{{gstAmount}}</span>
+        </div>
+        {{/if}}
+        <div class="total-row final-total">
+          <span class="total-label">Total Amount Due</span>
+          <span class="total-value">{{totalAmount}}</span>
+        </div>
+      </div>
+
+      <center>
+        <a href="{{paymentUrl}}" class="cta-button">Pay Now</a>
+      </center>
+
+      <div class="payment-info">
+        <strong>Payment Terms:</strong> Due within 7 days. Late payments may result in service interruption.
+        All amounts are in INR (Indian Rupees).
+      </div>
+
+      <div class="download-link">
+        <a href="{{downloadPdfUrl}}">📄 Download PDF Invoice</a>
+      </div>
+
+      <p style="font-size: 13px; color: #4A4A4A; text-align: center; margin-top: 30px;">
+        Questions about this invoice? Contact us at
+        <a href="mailto:{{billingEmail}}" style="color: #F97316; text-decoration: none;">{{billingEmail}}</a>
+      </p>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <p class="footer-text">© 2025 TinAI Cloud. All rights reserved.</p>
+      <p class="footer-text">
+        <a href="{{unsubscribeUrl}}" class="unsubscribe">Unsubscribe</a> |
+        <a href="{{preferencesUrl}}" class="unsubscribe">Email Preferences</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>

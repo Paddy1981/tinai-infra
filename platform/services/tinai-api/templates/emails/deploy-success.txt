@@ -1,0 +1,33 @@
+Deployment Successful ✅
+=======================
+
+{{appName}}
+Deploy ID: {{deploymentId}}
+
+Deployment Details
+------------------
+Branch: {{branch}}
+Commit: {{commitShort}}
+Build Time: {{buildDuration}}
+Deployed At: {{deployedAt}}
+
+Your app is live at:
+{{liveUrl}}
+
+Quick Links
+-----------
+• Visit Application: {{liveUrl}}
+• View Logs: {{logsUrl}}
+• View Metrics: {{metricsUrl}}
+• Settings: {{dashboardUrl}}
+
+Next Steps
+----------
+• Configure your custom domain in the dashboard
+• Set up environment variables for production
+• Enable auto-deployments for your main branch
+• Monitor your app's performance and logs
+
+---
+© 2025 TinAI Cloud. All rights reserved.
+Unsubscribe: {{unsubscribeUrl}}

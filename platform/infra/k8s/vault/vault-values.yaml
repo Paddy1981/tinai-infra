@@ -1,0 +1,41 @@
+# HashiCorp Vault — helm install vault hashicorp/vault -f vault-values.yaml -n vault --create-namespace
+global:
+  enabled: true
+  tlsDisable: false   # TLS enabled in prod; cert-manager provides the cert
+
+server:
+  ha:
+    enabled: false    # single-node for now; upgrade to HA after validation
+  dataStorage:
+    enabled: true
+    size: 10Gi
+    storageClass: local-path
+  extraEnvironmentVars:
+    VAULT_CACERT: /vault/userconfig/vault-tls/ca.crt
+  volumes:
+    - name: vault-tls
+      secret:
+        secretName: vault-tls
+  volumeMounts:
+    - mountPath: /vault/userconfig/vault-tls
+      name: vault-tls
+      readOnly: true
+  auditStorage:
+    enabled: true
+    size: 5Gi
+  standalone:
+    config: |
+      ui = true
+      listener "tcp" {
+        tls_disable     = 0
+        address         = "[::]:8200"
+        tls_cert_file   = "/vault/userconfig/vault-tls/tls.crt"
+        tls_key_file    = "/vault/userconfig/vault-tls/tls.key"
+      }
+      storage "file" {
+        path = "/vault/data"
+      }
+
+ui:
+  enabled: true
+  serviceType: ClusterIP

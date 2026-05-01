@@ -1,0 +1,129 @@
+# Helm values for kube-prometheus-stack
+# Deploy with:
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm repo update
+#   helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+#     --namespace monitoring --create-namespace \
+#     -f values.yaml
+
+grafana:
+  enabled: true
+  adminPassword:
+    # Read admin password from a pre-created secret:
+    #   kubectl create secret generic grafana-admin-secret \
+    #     --from-literal=admin-password='<password>' -n monitoring
+    valueFrom:
+      secretKeyRef:
+        name: grafana-admin-secret
+        key: admin-password
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    hosts:
+      - grafana.tinai.cloud
+    tls:
+      - secretName: grafana-tls
+        hosts:
+          - grafana.tinai.cloud
+
+prometheus:
+  prometheusSpec:
+    # retain metrics for 15 days
+    retention: 15d
+    # persistent storage for Prometheus TSDB
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: longhorn
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 20Gi
+    # scrape all ServiceMonitors cluster-wide regardless of label selectors
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+    # additional scrape configs for Tinai internal services
+    additionalScrapeConfigs:
+      - job_name: tinai-api
+        metrics_path: /metrics
+        static_configs:
+          - targets:
+              - tinai-api.tinai-system.svc.cluster.local:8000
+        relabel_configs:
+          - target_label: service
+            replacement: tinai-api
+
+      - job_name: tinai-build-api
+        metrics_path: /metrics
+        static_configs:
+          - targets:
+              - tinai-build-api.tinai-system.svc.cluster.local:8001
+        relabel_configs:
+          - target_label: service
+            replacement: tinai-build-api
+
+      - job_name: tinai-realtime
+        metrics_path: /metrics
+        static_configs:
+          - targets:
+              - tinai-realtime.tinai-system.svc.cluster.local:8002
+        relabel_configs:
+          - target_label: service
+            replacement: tinai-realtime
+
+      - job_name: tinai-functions
+        metrics_path: /metrics
+        static_configs:
+          - targets:
+              - tinai-functions.tinai-functions.svc.cluster.local:9000
+        relabel_configs:
+          - target_label: service
+            replacement: tinai-functions
+
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: longhorn
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 2Gi
+
+defaultRules:
+  create: true
+  rules:
+    alertmanager: true
+    etcd: false        # not exposed in managed clusters
+    configReloaders: true
+    general: true
+    k8s: true
+    kubeApiserverAvailability: true
+    kubeApiserverBurnrate: true
+    kubeApiserverHistogram: true
+    kubeApiserverSlos: true
+    kubeControllerManager: false   # not accessible in managed clusters
+    kubelet: true
+    kubeProxy: false
+    kubePrometheusGeneral: true
+    kubePrometheusNodeRecording: true
+    kubernetesApps: true
+    kubernetesResources: true
+    kubernetesStorage: true
+    kubernetesSystem: true
+    kubeSchedulerAlerting: false   # not accessible in managed clusters
+    kubeSchedulerRecording: false
+    kubeStateMetrics: true
+    network: true
+    node: true
+    nodeExporterAlerting: true
+    nodeExporterRecording: true
+    prometheus: true
+    prometheusOperator: true

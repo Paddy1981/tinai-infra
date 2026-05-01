@@ -1,0 +1,144 @@
+# Per-tenant Redis 7 template
+# Replace TENANT_NAME with the actual tenant identifier before applying.
+# Usage: sed 's/TENANT_NAME/acme/g' redis-tenant.yaml | kubectl apply -f -
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tinai-tenant-TENANT_NAME
+  labels:
+    tinai.cloud/tenant: TENANT_NAME
+    tinai.cloud/component: cache
+
+---
+# Secret template — populate REDIS_PASSWORD_B64 with a base64-encoded value
+# before applying (e.g. echo -n 'strongpassword' | base64)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: redis-TENANT_NAME-secret
+  namespace: tinai-tenant-TENANT_NAME
+type: Opaque
+data:
+  # REPLACE with base64-encoded password: echo -n '<password>' | base64
+  REDIS_PASSWORD: REDIS_PASSWORD_B64
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis-TENANT_NAME
+  namespace: tinai-tenant-TENANT_NAME
+  labels:
+    app: redis-TENANT_NAME
+    tinai.cloud/tenant: TENANT_NAME
+    tinai.cloud/component: cache
+spec:
+  serviceName: TENANT_NAME-redis-headless
+  replicas: 1
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: redis-TENANT_NAME
+  template:
+    metadata:
+      labels:
+        app: redis-TENANT_NAME
+        tinai.cloud/tenant: TENANT_NAME
+        tinai.cloud/component: cache
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          args:
+            - "redis-server"
+            - "--appendonly"
+            - "yes"
+            - "--requirepass"
+            - "$(REDIS_PASSWORD)"
+          ports:
+            - containerPort: 6379
+              name: redis
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-TENANT_NAME-secret
+                  key: REDIS_PASSWORD
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - redis-cli --no-auth-warning -a "$REDIS_PASSWORD" ping | grep -q PONG
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - redis-cli --no-auth-warning -a "$REDIS_PASSWORD" ping | grep -q PONG
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            failureThreshold: 3
+
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: longhorn
+        resources:
+          requests:
+            storage: 1Gi
+
+---
+# Headless Service for stable pod DNS (required by StatefulSet)
+apiVersion: v1
+kind: Service
+metadata:
+  name: TENANT_NAME-redis-headless
+  namespace: tinai-tenant-TENANT_NAME
+spec:
+  clusterIP: None
+  selector:
+    app: redis-TENANT_NAME
+  ports:
+    - port: 6379
+
+---
+# ClusterIP Service for app connectivity
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-TENANT_NAME
+  namespace: tinai-tenant-TENANT_NAME
+  labels:
+    app: redis-TENANT_NAME
+    tinai.cloud/tenant: TENANT_NAME
+    tinai.cloud/component: cache
+spec:
+  type: ClusterIP
+  selector:
+    app: redis-TENANT_NAME
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+      protocol: TCP

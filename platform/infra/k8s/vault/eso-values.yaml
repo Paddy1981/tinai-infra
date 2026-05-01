@@ -1,0 +1,9 @@
+# External Secrets Operator
+# helm install external-secrets external-secrets/external-secrets \
+#   -f eso-values.yaml -n external-secrets --create-namespace
+replicaCount: 2
+installCRDs: true
+webhook:
+  replicaCount: 2
+certController:
+  replicaCount: 2

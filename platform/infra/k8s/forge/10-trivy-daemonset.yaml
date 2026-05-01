@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: trivy-node
+  namespace: tinai-forge
+  labels:
+    app: trivy-node
+    component: security-scanner
+spec:
+  selector:
+    matchLabels:
+      app: trivy-node
+  template:
+    metadata:
+      labels:
+        app: trivy-node
+    spec:
+      serviceAccountName: tinai-forge
+      containers:
+        - name: trivy
+          image: aquasecurity/trivy:latest
+          command: ["trivy", "server", "--listen", "0.0.0.0:4954"]
+          ports:
+            - containerPort: 4954
+              name: trivy-server
+          env:
+            - name: TRIVY_CACHE_DIR
+              value: /var/cache/trivy
+          volumeMounts:
+            - name: trivy-cache
+              mountPath: /var/cache/trivy
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+      volumes:
+        - name: trivy-cache
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: trivy-server
+  namespace: tinai-forge
+  labels:
+    app: trivy-node
+spec:
+  selector:
+    app: trivy-node
+  ports:
+    - port: 4954
+      targetPort: 4954
+      name: trivy-server
+  type: ClusterIP

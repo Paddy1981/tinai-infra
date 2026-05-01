@@ -1,0 +1,30 @@
+# Grafana Loki — single binary mode for single-region deployment
+# helm install loki grafana/loki -f loki-values.yaml -n monitoring --create-namespace
+loki:
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+  auth_enabled: false
+  limits_config:
+    retention_period: 720h   # 30 days
+    ingestion_rate_mb: 16
+    ingestion_burst_size_mb: 32
+  compactor:
+    retention_enabled: true
+
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 50Gi
+    storageClass: local-path
+
+monitoring:
+  selfMonitoring:
+    enabled: false
+  lokiCanary:
+    enabled: false
+
+test:
+  enabled: false

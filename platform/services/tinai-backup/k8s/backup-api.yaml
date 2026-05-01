@@ -1,0 +1,14 @@
+# Deployment for backup-api — exposes REST endpoints to list backups and trigger on-demand
+# This is a future enhancement — the CronJob handles scheduled backups
+# POST /api/v1/backup/trigger        — trigger immediate backup
+# GET  /api/v1/backup/list           — list available backups from MinIO
+# POST /api/v1/backup/restore/:name  — restore from a specific backup (future)
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tinai-backup-config
+  namespace: tinai-system
+data:
+  BACKUP_RETENTION_DAYS: "30"
+  MINIO_BUCKET: "tinai-backups"

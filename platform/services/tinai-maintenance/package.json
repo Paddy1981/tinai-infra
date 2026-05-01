@@ -1,0 +1,25 @@
+{
+  "name": "@tinai/maintenance",
+  "version": "0.1.0",
+  "description": "Tinai platform maintenance automation — certs, backup, images, storage, secrets, self-healing, logs",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "cert":    "node cert-renewal/index.js",
+    "backup":  "node db-backup/index.js",
+    "verify":  "node db-backup/verify.js",
+    "images":  "node image-updater/index.js",
+    "storage": "node storage-cleanup/index.js",
+    "secrets": "DRY_RUN=true node secret-rotation/index.js",
+    "logs":    "node log-rotation/index.js",
+    "heal":    "node self-healing/index.js"
+  },
+  "dependencies": {
+    "fastify":     "^4.26.0",
+    "nats":        "^2.18.0",
+    "nodemailer":  "^6.9.0",
+    "pino":        "^8.19.0",
+    "pino-pretty": "^11.0.0"
+  },
+  "engines": { "node": ">=20" }
+}

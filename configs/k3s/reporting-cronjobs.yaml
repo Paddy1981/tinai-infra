@@ -1,0 +1,170 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  annotations:
+  name: compliance-report-batch
+  namespace: reporting
+spec:
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 14400
+      backoffLimit: 1
+      template:
+        spec:
+          containers:
+          - command:
+            - node
+            - compliance-report/src/index.js
+            env:
+            - name: RUN_MODE
+              value: batch
+            envFrom:
+            - configMapRef:
+                name: reporting-config
+            - secretRef:
+                name: reporting-secrets
+            image: docker.io/tinai/reporting:v2
+            imagePullPolicy: Never
+            name: compliance-report
+            resources:
+              limits:
+                cpu: 500m
+                memory: 512Mi
+              requests:
+                cpu: 100m
+                memory: 256Mi
+          restartPolicy: OnFailure
+          serviceAccount: reporting
+          serviceAccountName: reporting
+  schedule: 0 8 1 1,4,7,10 *
+  successfulJobsHistoryLimit: 3
+  suspend: false
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  annotations:
+  name: daily-digest
+  namespace: reporting
+spec:
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - command:
+            - curl
+            - -s
+            - -X
+            - POST
+            - -H
+            - 'x-admin-token: $(ADMIN_TOKEN)'
+            - http://mrr-dashboard.reporting.svc.cluster.local:3202/digest
+            envFrom:
+            - secretRef:
+                name: reporting-secrets
+            image: docker.io/tinai/reporting:v2
+            imagePullPolicy: Never
+            name: digest-trigger
+            resources:
+              limits:
+                cpu: 50m
+                memory: 32Mi
+              requests:
+                cpu: 10m
+                memory: 16Mi
+          restartPolicy: OnFailure
+  schedule: 0 7 * * *
+  successfulJobsHistoryLimit: 3
+  suspend: false
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  annotations:
+  name: gst-export
+  namespace: reporting
+spec:
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 1800
+      backoffLimit: 2
+      template:
+        spec:
+          containers:
+          - command:
+            - node
+            - gst-export/src/index.js
+            envFrom:
+            - configMapRef:
+                name: reporting-config
+            - secretRef:
+                name: reporting-secrets
+            image: docker.io/tinai/reporting:v2
+            imagePullPolicy: Never
+            name: gst-export
+            resources:
+              limits:
+                cpu: 200m
+                memory: 256Mi
+              requests:
+                cpu: 50m
+                memory: 128Mi
+          restartPolicy: OnFailure
+          serviceAccount: reporting
+          serviceAccountName: reporting
+  schedule: 0 7 5 * *
+  successfulJobsHistoryLimit: 3
+  suspend: false
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  annotations:
+  name: usage-report
+  namespace: reporting
+spec:
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 7200
+      backoffLimit: 2
+      template:
+        spec:
+          containers:
+          - command:
+            - node
+            - usage-report/src/index.js
+            envFrom:
+            - configMapRef:
+                name: reporting-config
+            - secretRef:
+                name: reporting-secrets
+            image: docker.io/tinai/reporting:v2
+            imagePullPolicy: Never
+            name: usage-report
+            resources:
+              limits:
+                cpu: 500m
+                memory: 512Mi
+              requests:
+                cpu: 100m
+                memory: 256Mi
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+          serviceAccount: reporting
+          serviceAccountName: reporting
+  schedule: 0 6 1 * *
+  successfulJobsHistoryLimit: 3
+  suspend: false
+---

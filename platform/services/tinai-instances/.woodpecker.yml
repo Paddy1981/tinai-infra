@@ -1,0 +1,28 @@
+when:
+  - event: push
+    branch: [main, master]
+
+steps:
+  test:
+    image: golang:1.22-alpine
+    commands:
+      - go test ./...
+      - go vet ./...
+
+  build-push:
+    image: woodpeckerci/plugin-docker-buildx
+    settings:
+      registry: registry.e2enetworks.net
+      repo: registry.e2enetworks.net/tinai/instances
+      tags:
+        - latest
+        - ${CI_COMMIT_SHA:0:8}
+      username:
+        from_secret: REGISTRY_USERNAME
+      password:
+        from_secret: REGISTRY_PASSWORD
+      platforms:
+        - linux/amd64
+    when:
+      event: push
+      branch: [main, master]

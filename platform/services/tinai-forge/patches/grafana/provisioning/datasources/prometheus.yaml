@@ -1,0 +1,165 @@
+apiVersion: 1
+
+# Config reloading is enabled by default
+providers:
+  - name: TinAI Datasources
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/datasources
+
+datasources:
+  # TinAI Prometheus
+  - name: TinAI Prometheus
+    type: prometheus
+    access: proxy
+    orgId: 1
+    url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+    password: ""
+    user: ""
+    database: ""
+    basicAuth: false
+    basicAuthUser: ""
+    basicAuthPassword: ""
+    withCredentials: false
+    isDefault: true
+    tlsAuth: false
+    tlsAuthWithCACert: false
+    tlsSkipVerify: false
+    jsonData:
+      httpMethod: POST
+      timeInterval: 15s
+      prometheusVersion: "2.40.0"
+      cacheLevel: ""
+      disableMetricsLookup: false
+      customQueryParameters: ""
+      exemplarTraceIdDestinations: []
+      manageAlerts: true
+    secureJsonData: {}
+    version: 1
+    readOnly: false
+
+  # TinAI Loki for logs
+  - name: TinAI Loki
+    type: loki
+    access: proxy
+    orgId: 1
+    url: http://loki.monitoring.svc.cluster.local:3100
+    password: ""
+    user: ""
+    database: ""
+    basicAuth: false
+    basicAuthUser: ""
+    basicAuthPassword: ""
+    withCredentials: false
+    isDefault: false
+    tlsAuth: false
+    tlsAuthWithCACert: false
+    tlsSkipVerify: false
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        - name: TraceID
+          matcherRegex: 'trace_id["\s:=]+([^\s"]+)'
+          url: '/d/tinai-traces?var-traceID=$${__value.raw}'
+          datasourceUid: tinai_tempo
+        - name: RequestID
+          matcherRegex: 'request_id["\s:=]+([^\s"]+)'
+          url: '/d/tinai-requests?var-requestID=$${__value.raw}'
+      manageAlerts: true
+    secureJsonData: {}
+    version: 1
+    readOnly: false
+
+  # TinAI Tempo for traces
+  - name: TinAI Tempo
+    type: tempo
+    access: proxy
+    orgId: 1
+    url: http://tempo.monitoring.svc.cluster.local:3200
+    password: ""
+    user: ""
+    database: ""
+    basicAuth: false
+    basicAuthUser: ""
+    basicAuthPassword: ""
+    withCredentials: false
+    isDefault: false
+    tlsAuth: false
+    tlsAuthWithCACert: false
+    tlsSkipVerify: false
+    jsonData:
+      tracesToMetrics:
+        datasourceUid: tinai_prometheus
+        tags:
+          - job
+          - instance
+      spanBar:
+        tag: http.method
+      lokiSearch:
+        datasourceUid: tinai_loki
+    secureJsonData: {}
+    version: 1
+    readOnly: false
+
+  # TinAI Postgres Database
+  - name: TinAI Postgres
+    type: postgres
+    access: proxy
+    orgId: 1
+    url: postgres.default.svc.cluster.local:5432
+    password: ""
+    user: ""
+    database: tinai_metrics
+    basicAuth: false
+    basicAuthUser: ""
+    basicAuthPassword: ""
+    withCredentials: false
+    isDefault: false
+    tlsAuth: false
+    tlsAuthWithCACert: false
+    tlsSkipVerify: false
+    sslMode: require
+    jsonData:
+      connMaxLifetime: 0
+      maxIdleConns: 0
+      maxOpenConns: 0
+      postgresVersion: 1400
+      timescaledb: true
+    secureJsonData:
+      password: ${DB_PASSWORD}
+    version: 1
+    readOnly: false
+
+  # Elasticsearch for TinAI Events (optional)
+  - name: TinAI Elasticsearch
+    type: elasticsearch
+    access: proxy
+    orgId: 1
+    url: http://elasticsearch.monitoring.svc.cluster.local:9200
+    password: ""
+    user: ""
+    database: tinai-events
+    basicAuth: false
+    basicAuthUser: elastic
+    basicAuthPassword: ""
+    withCredentials: false
+    isDefault: false
+    tlsAuth: false
+    tlsAuthWithCACert: false
+    tlsSkipVerify: false
+    jsonData:
+      esVersion: 8.0.0
+      logMessageField: message
+      logLevelField: level
+      timeField: "@timestamp"
+      interval: Daily
+      customQueryParameters: ""
+    secureJsonData:
+      basicAuthPassword: ${ES_PASSWORD}
+    version: 1
+    readOnly: false

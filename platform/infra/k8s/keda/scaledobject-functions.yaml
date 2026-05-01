@@ -1,0 +1,42 @@
+# KEDA ScaledObject for the tinai-functions runner Deployment.
+# This scales the Knative runner service itself based on total function invocation rate.
+#
+# Note: individual user-deployed functions are Knative Services and are scaled
+# automatically by Knative's built-in KPA (Knative Pod Autoscaler) — they do NOT
+# need a separate KEDA ScaledObject.
+#
+# This ScaledObject only targets the tinai-functions runner pod that dispatches
+# invocations to the Knative layer.
+#
+# Apply once (static — not per-workload):
+#   kubectl apply -f scaledobject-functions.yaml
+#
+# Prerequisites:
+#   - KEDA >= 2.12 installed in the cluster
+#   - kube-prometheus-stack deployed in namespace: monitoring
+#   - tinai-functions exposes /metrics with a tinai_function_invocations_total counter
+
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: tinai-functions-scaler
+  namespace: tinai-system           # correct namespace (was tinai-functions — does not exist)
+  labels:
+    tinai.cloud/component: autoscaler
+    tinai.cloud/scaler-type: functions
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: tinai-functions
+  minReplicaCount: 1                # keep 1 alive to avoid cold-start latency
+  maxReplicaCount: 20
+  cooldownPeriod: 120               # functions scale down faster than apps
+  pollingInterval: 15
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus-server.monitoring.svc.cluster.local
+        metricName: tinai_function_invocations_total
+        query: rate(tinai_function_invocations_total{namespace="tinai-system"}[1m])
+        threshold: "5"              # scale up when > 5 invocations/s

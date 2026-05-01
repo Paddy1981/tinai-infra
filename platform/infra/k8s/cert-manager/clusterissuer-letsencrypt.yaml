@@ -1,0 +1,53 @@
+# ClusterIssuer resources for Let's Encrypt (staging + production)
+# Uses HTTP-01 ACME challenge via the Traefik ingress class.
+#
+# Prerequisites:
+#   - cert-manager >= 1.13 installed in the cluster
+#   - Traefik ingress controller deployed and publicly reachable on port 80
+#   - DNS for tinai.cloud pointing to the cluster's load balancer
+#
+# Apply order: staging first to validate setup, then prod.
+#   kubectl apply -f clusterissuer-letsencrypt.yaml
+#
+# Reference a ClusterIssuer in an Ingress annotation:
+#   cert-manager.io/cluster-issuer: letsencrypt-prod
+
+---
+# Staging issuer — use this first to avoid Let's Encrypt rate limits while testing.
+# Certificates issued by staging are NOT trusted by browsers.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+  labels:
+    tinai.cloud/component: cert-manager
+spec:
+  acme:
+    email: platform@tinai.cloud
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: traefik
+
+---
+# Production issuer — issues browser-trusted certificates.
+# Switch to this once staging is confirmed working.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+  labels:
+    tinai.cloud/component: cert-manager
+spec:
+  acme:
+    email: platform@tinai.cloud
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: traefik

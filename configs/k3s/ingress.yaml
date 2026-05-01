@@ -1,0 +1,196 @@
+---
+# Dashboard: tinai.cloud, app.tinai.cloud
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tinai-dashboard
+  namespace: tinai-system
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: tinai.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tinai-dashboard
+                port:
+                  number: 3000
+    - host: app.tinai.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tinai-dashboard
+                port:
+                  number: 3000
+---
+# API: api.tinai.cloud
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tinai-api
+  namespace: tinai-system
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: api.tinai.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tinai-api
+                port:
+                  number: 3001
+---
+# Auth: auth.tinai.cloud
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tinai-auth
+  namespace: tinai-system
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: auth.tinai.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tinai-auth
+                port:
+                  number: 3002
+---
+# Gateway: gateway.tinai.cloud, gw.tinai.cloud
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tinai-gateway
+  namespace: tinai-system
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: gateway.tinai.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tinai-gateway
+                port:
+                  number: 3005
+    - host: gw.tinai.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tinai-gateway
+                port:
+                  number: 3005
+---
+# Realtime/WebSocket: ws.tinai.cloud
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tinai-realtime
+  namespace: tinai-system
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: ws.tinai.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tinai-realtime
+                port:
+                  number: 3006
+---
+# Forgejo: git.tinai.cloud
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tinai-forgejo
+  namespace: tinai-system
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: git.tinai.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: forgejo
+                port:
+                  number: 3000
+---
+# Forge: forge.tinai.cloud
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tinai-forge
+  namespace: tinai-system
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: forge.tinai.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tinai-forge
+                port:
+                  number: 8090
+---
+# MinIO Console: minio.tinai.cloud
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tinai-minio
+  namespace: tinai-system
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: minio.tinai.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: minio
+                port:
+                  number: 9001

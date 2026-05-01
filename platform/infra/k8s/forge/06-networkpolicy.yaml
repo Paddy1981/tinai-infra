@@ -1,0 +1,77 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tinai-forge-egress
+  namespace: tinai-forge
+spec:
+  podSelector:
+    matchLabels:
+      app: tinai-forge
+  policyTypes:
+    - Egress
+    - Ingress
+  egress:
+    # Allow DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # Allow to Kubernetes API (for creating jobs/pods)
+    - ports:
+        - port: 6443
+          protocol: TCP
+    # Allow to registry (pull/push images)
+    - ports:
+        - port: 443
+          protocol: TCP
+        - port: 80
+          protocol: TCP
+    # Allow to GitHub API
+    - ports:
+        - port: 443
+    # Allow to PostgreSQL
+    - ports:
+        - port: 5432
+  ingress:
+    # Allow from tinai-system (dashboard API)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: tinai-system
+    # Allow from monitoring (Prometheus scrape)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - port: 8090
+---
+# Network policy for test namespace - isolate from production
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tinai-forge-test-isolation
+  namespace: tinai-forge-test
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Only allow from tinai-forge namespace (test runner)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: tinai-forge
+  egress:
+    # Allow DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+    # Allow within test namespace (pod-to-pod for tests)
+    - to:
+        - podSelector: {}
+    # Allow to registry (pull images)
+    - ports:
+        - port: 443

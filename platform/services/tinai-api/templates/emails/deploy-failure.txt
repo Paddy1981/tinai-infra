@@ -1,0 +1,38 @@
+Deployment Failed ❌
+===================
+
+{{appName}}
+Deploy ID: {{deploymentId}}
+
+Deployment Details
+------------------
+Branch: {{branch}}
+Commit: {{commitShort}}
+Failed At: {{failedAt}}
+Build Phase: {{failedPhase}}
+
+Error Details
+-------------
+{{errorMessage}}
+
+Quick Links
+-----------
+• View Full Logs: {{logsUrl}}
+• Retry Deployment: {{retryUrl}}
+
+Common Solutions
+----------------
+• Build errors: Check your package.json dependencies and build scripts
+• Environment variables: Ensure all required env vars are set in your project settings
+• Memory issues: Your build may need more resources — upgrade your plan or optimize your build
+• Network timeouts: Check for slow or failing external API calls during build
+• Node version: Verify you're using a supported Node.js version (check engines field)
+
+Need Help?
+----------
+Our team is here to help debug your deployment.
+Contact Support: {{supportEmail}}
+
+---
+© 2025 TinAI Cloud. All rights reserved.
+Unsubscribe: {{unsubscribeUrl}}

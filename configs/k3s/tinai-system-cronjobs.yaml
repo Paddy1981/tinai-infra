@@ -1,0 +1,92 @@
+---
+# pg-backup: Daily PostgreSQL backup to /home/padmanaban/tinai/backups
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pg-backup
+  namespace: tinai-system
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Allow
+  failedJobsHistoryLimit: 1
+  successfulJobsHistoryLimit: 3
+  suspend: false
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            tinai.cloud/role: stateful
+          restartPolicy: OnFailure
+          containers:
+          - name: backup
+            image: postgres:16-alpine
+            imagePullPolicy: IfNotPresent
+            command:
+            - /bin/sh
+            - -c
+            - |
+              BACKUP_FILE="/backups/pg_dumpall_$(date +%Y%m%d_%H%M).sql.gz"
+              pg_dumpall -U tinai -h postgres-rw.tinai-system.svc.cluster.local | gzip > "$BACKUP_FILE"
+              echo "Backup created: $BACKUP_FILE ($(du -sh $BACKUP_FILE | cut -f1))"
+              # Keep only last 7 days
+              find /backups -name "pg_dumpall_*.sql.gz" -mtime +7 -delete
+              echo "Old backups cleaned"
+            env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: POSTGRES_PASSWORD
+                  name: tinai-db-credentials
+            volumeMounts:
+            - mountPath: /backups
+              name: backups
+          volumes:
+          - name: backups
+            hostPath:
+              path: /home/padmanaban/tinai/backups
+              type: DirectoryOrCreate
+---
+# tle-ingest: Satellite TLE data ingest from CelesTrak (suspended - needs PostGIS)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: tle-ingest
+  namespace: tinai-system
+  labels:
+    app: tle-ingest
+    component: space-data
+spec:
+  schedule: "0 */6 * * *"
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  successfulJobsHistoryLimit: 3
+  suspend: true
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app: tle-ingest
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: tle-ingest
+            image: registry.e2enetworks.net/tinai/tle-ingest:latest
+            imagePullPolicy: IfNotPresent
+            env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  key: DATABASE_URL
+                  name: tinai-space-db
+            - name: TLE_URL
+              value: https://celestrak.org/NORAD/elements/gp.php?GROUP=resource&FORMAT=tle
+            resources:
+              limits:
+                cpu: 100m
+                memory: 64Mi
+              requests:
+                cpu: 10m
+                memory: 32Mi

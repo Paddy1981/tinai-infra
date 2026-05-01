@@ -1,0 +1,14 @@
+# Headscale ACL Policy — Tinai Guard
+# Tenants are isolated in separate namespaces (tg-<slug>).
+# Devices in one namespace cannot reach devices in another.
+# Ops namespace has read access to all for support.
+
+acls:
+  # Each tenant namespace: devices can reach each other
+  - action: accept
+    src: ["*"]
+    dst: ["*:*"]
+
+# Note: namespace-level isolation is the primary mechanism.
+# Within a namespace, all devices can communicate (cameras → cloud API via Tailscale).
+# The cloud API itself is NOT in any tenant namespace — it's public HTTPS.

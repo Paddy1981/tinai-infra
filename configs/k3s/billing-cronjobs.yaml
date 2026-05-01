@@ -1,0 +1,43 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  annotations:
+  name: trial-lifecycle
+  namespace: billing
+spec:
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 1800
+      backoffLimit: 2
+      template:
+        spec:
+          containers:
+          - command:
+            - node
+            - trial-lifecycle/src/index.js
+            envFrom:
+            - configMapRef:
+                name: billing-chain-config
+            - secretRef:
+                name: billing-chain-secrets
+            image: docker.io/tinai/billing-chain:v1
+            imagePullPolicy: Never
+            name: trial-lifecycle
+            resources:
+              limits:
+                cpu: 200m
+                memory: 256Mi
+              requests:
+                cpu: 50m
+                memory: 64Mi
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+          serviceAccount: billing-chain
+          serviceAccountName: billing-chain
+  schedule: 0 */6 * * *
+  successfulJobsHistoryLimit: 3
+  suspend: false

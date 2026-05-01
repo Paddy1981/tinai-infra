@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tinai-brand-assets
+  namespace: tinai-system
+data:
+  PRIMARY_COLOR: "#6366f1"
+  BACKGROUND_COLOR: "#0f172a"
+  TEXT_COLOR: "#f1f5f9"
+  BRAND_NAME: "Tinai"
+  BRAND_TAGLINE: "India's Sovereign AI Cloud"
+  LOGO_URL: "https://tinai.cloud/logo.svg"
+  FAVICON_URL: "https://tinai.cloud/favicon.ico"
+  SUPPORT_EMAIL: "support@tinai.cloud"
+  DOCS_URL: "https://docs.tinai.cloud"
+  STATUS_URL: "https://status.tinai.cloud"

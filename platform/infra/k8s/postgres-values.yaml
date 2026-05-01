@@ -1,0 +1,23 @@
+auth:
+  # password must be passed at helm install time:
+  # helm install postgres bitnami/postgresql -f postgres-values.yaml --set auth.password=$POSTGRES_PASSWORD
+  # Or use auth.existingSecret to reference a pre-created Kubernetes Secret.
+  existingSecret: "postgres-credentials"
+  secretKeys:
+    adminPasswordKey: "postgres-password"
+    userPasswordKey: "password"
+  username: tinai
+  database: tinai
+
+primary:
+  persistence:
+    enabled: true
+    size: 5Gi
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi

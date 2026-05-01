@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tinai-region-config-qa
+  namespace: tinai-system
+  labels:
+    tinai.cloud/region: "QA"
+data:
+  REGION: "QA"
+  DC_NAME: "Meeza DC"
+  DC_CITY: "Doha"
+  DC_COUNTRY: "Qatar"
+  COMPLIANCE_FRAMEWORK: "PDPPL Law No. 13 of 2016"
+  REGULATOR: "NDPO under NCSA"
+  ENFORCEMENT_DATE: "2016-11-14"
+  DATA_RESIDENCY: "Qatar"
+  ENCRYPTION_STANDARD: "AES-256"

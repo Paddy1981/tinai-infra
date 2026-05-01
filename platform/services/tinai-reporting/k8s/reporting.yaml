@@ -1,0 +1,357 @@
+# k8s/reporting.yaml
+# All reporting services deployed to the `reporting` namespace.
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: reporting
+  labels:
+    app.kubernetes.io/managed-by: argocd
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: reporting-config
+  namespace: reporting
+data:
+  LAGO_API_URL: "http://lago-api.billing.svc.cluster.local:3000"
+  PROMETHEUS_URL: "http://prometheus-server.monitoring.svc.cluster.local:9090"
+  NATS_SERVERS: "nats://nats.core.svc.cluster.local:4222"
+  SMTP_HOST: "stalwart.core.svc.cluster.local"
+  SMTP_PORT: "587"
+  EMAIL_FROM: "billing@tinai.cloud"
+  EMAIL_FROM_NAME: "Tinai"
+  TENANT_NS_PREFIX: "tenant-"
+  GST_HSN_CODE: "998313"
+  GST_RATE: "0.18"
+  COMPANY_LEGAL_NAME: "Larun Engineering LLP"
+  LOG_LEVEL: "info"
+  NODE_ENV: "production"
+  DASHBOARD_ORIGIN: "https://app.tinai.cloud"
+
+---
+# ── 1. Usage Report (CronJob — 1st of each month 06:00) ──────────────────────
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: usage-report
+  namespace: reporting
+spec:
+  schedule: "0 6 1 * *"
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  successfulJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 7200
+      template:
+        spec:
+          serviceAccountName: reporting
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+          containers:
+            - name: usage-report
+              image: harbor.tinai.cloud/tinai/reporting:latest
+              command: ["node", "usage-report/src/index.js"]
+              envFrom:
+                - configMapRef:
+                    name: reporting-config
+                - secretRef:
+                    name: reporting-secrets
+              resources:
+                requests: { cpu: "100m", memory: "256Mi" }
+                limits: { cpu: "500m", memory: "512Mi" }
+
+---
+# ── 2. Compliance Report (CronJob — quarterly + Deployment for on-demand) ─────
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: compliance-report-batch
+  namespace: reporting
+spec:
+  schedule: "0 8 1 1,4,7,10 *"   # 1st Jan, Apr, Jul, Oct at 08:00
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 14400
+      template:
+        spec:
+          serviceAccountName: reporting
+          restartPolicy: OnFailure
+          containers:
+            - name: compliance-report
+              image: harbor.tinai.cloud/tinai/reporting:latest
+              command: ["node", "compliance-report/src/index.js"]
+              env:
+                - name: RUN_MODE
+                  value: "batch"
+              envFrom:
+                - configMapRef:
+                    name: reporting-config
+                - secretRef:
+                    name: reporting-secrets
+              resources:
+                requests: { cpu: "100m", memory: "256Mi" }
+                limits: { cpu: "500m", memory: "512Mi" }
+
+---
+# On-demand compliance report server
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: compliance-report
+  namespace: reporting
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: compliance-report
+  template:
+    metadata:
+      labels:
+        app: compliance-report
+    spec:
+      serviceAccountName: reporting
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+      containers:
+        - name: compliance-report
+          image: harbor.tinai.cloud/tinai/reporting:latest
+          command: ["node", "compliance-report/src/index.js"]
+          ports:
+            - containerPort: 3201
+          env:
+            - name: PORT
+              value: "3201"
+            - name: RUN_MODE
+              value: "server"
+          envFrom:
+            - configMapRef:
+                name: reporting-config
+            - secretRef:
+                name: reporting-secrets
+          resources:
+            requests: { cpu: "50m", memory: "128Mi" }
+            limits: { cpu: "300m", memory: "512Mi" }
+          livenessProbe:
+            httpGet: { path: /health, port: 3201 }
+            periodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: compliance-report
+  namespace: reporting
+spec:
+  selector:
+    app: compliance-report
+  ports:
+    - port: 3201
+      targetPort: 3201
+
+---
+# ── 3. GST Export (CronJob — 5th of each month 07:00) ────────────────────────
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: gst-export
+  namespace: reporting
+spec:
+  schedule: "0 7 5 * *"
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800
+      template:
+        spec:
+          serviceAccountName: reporting
+          restartPolicy: OnFailure
+          containers:
+            - name: gst-export
+              image: harbor.tinai.cloud/tinai/reporting:latest
+              command: ["node", "gst-export/src/index.js"]
+              envFrom:
+                - configMapRef:
+                    name: reporting-config
+                - secretRef:
+                    name: reporting-secrets
+              resources:
+                requests: { cpu: "50m", memory: "128Mi" }
+                limits: { cpu: "200m", memory: "256Mi" }
+
+---
+# ── 4. MRR Dashboard API (Deployment — always-on) ─────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mrr-dashboard
+  namespace: reporting
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mrr-dashboard
+  template:
+    metadata:
+      labels:
+        app: mrr-dashboard
+    spec:
+      serviceAccountName: reporting
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+      containers:
+        - name: mrr-dashboard
+          image: harbor.tinai.cloud/tinai/reporting:latest
+          command: ["node", "mrr-dashboard/src/index.js"]
+          ports:
+            - containerPort: 3202
+          env:
+            - name: PORT
+              value: "3202"
+          envFrom:
+            - configMapRef:
+                name: reporting-config
+            - secretRef:
+                name: reporting-secrets
+          resources:
+            requests: { cpu: "50m", memory: "64Mi" }
+            limits: { cpu: "200m", memory: "256Mi" }
+          livenessProbe:
+            httpGet: { path: /health, port: 3202 }
+            periodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mrr-dashboard
+  namespace: reporting
+spec:
+  selector:
+    app: mrr-dashboard
+  ports:
+    - port: 3202
+      targetPort: 3202
+
+---
+# Daily digest CronJob (pings the MRR dashboard service)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: daily-digest
+  namespace: reporting
+spec:
+  schedule: "0 7 * * *"    # 07:00 Qatar time (04:00 UTC)
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: digest-trigger
+              image: curlimages/curl:latest
+              command:
+                - curl
+                - -s
+                - -X
+                - POST
+                - -H
+                - "x-admin-token: $(ADMIN_TOKEN)"
+                - http://mrr-dashboard.reporting.svc.cluster.local:3202/digest
+              envFrom:
+                - secretRef:
+                    name: reporting-secrets
+              resources:
+                requests: { cpu: "10m", memory: "16Mi" }
+                limits: { cpu: "50m", memory: "32Mi" }
+
+---
+# ── RBAC ─────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: reporting
+  namespace: reporting
+automountServiceAccountToken: true
+
+---
+# Reporting needs read access to nodes (for compliance report)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: reporting
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: reporting
+subjects:
+  - kind: ServiceAccount
+    name: reporting
+    namespace: reporting
+roleRef:
+  kind: ClusterRole
+  name: reporting
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# ── Ingress ───────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: reporting-api
+  namespace: reporting
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  tls:
+    - hosts: ["api.tinai.cloud"]
+      secretName: tinai-api-tls
+  rules:
+    - host: api.tinai.cloud
+      http:
+        paths:
+          - path: /api/mrr
+            pathType: Prefix
+            backend:
+              service: { name: mrr-dashboard, port: { number: 3202 } }
+          - path: /api/revenue
+            pathType: Prefix
+            backend:
+              service: { name: mrr-dashboard, port: { number: 3202 } }
+          - path: /api/tenants
+            pathType: Prefix
+            backend:
+              service: { name: mrr-dashboard, port: { number: 3202 } }
+          - path: /api/summary
+            pathType: Prefix
+            backend:
+              service: { name: mrr-dashboard, port: { number: 3202 } }
+          - path: /compliance-report
+            pathType: Prefix
+            backend:
+              service: { name: compliance-report, port: { number: 3201 } }

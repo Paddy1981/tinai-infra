@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(kubectl -n tinai-system get cluster tinai-db -o jsonpath='{.spec.instances}')",
+      "Bash(kubectl -n tinai-system logs tinai-api-7f4f7bbf9-bw4np --since=10m)"
+    ]
+  }
+}

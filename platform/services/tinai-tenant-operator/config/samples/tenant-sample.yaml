@@ -1,0 +1,9 @@
+apiVersion: tinai.cloud/v1alpha1
+kind: Tenant
+metadata:
+  name: acme-corp
+spec:
+  displayName: "Acme Corporation"
+  owner: "admin@acme.example.com"
+  plan: starter
+  networkIsolation: true

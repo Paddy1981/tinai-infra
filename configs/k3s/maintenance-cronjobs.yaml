@@ -1,0 +1,289 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  annotations:
+  name: cert-renewal
+  namespace: maintenance
+spec:
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          containers:
+          - command:
+            - node
+            - cert-renewal/index.js
+            envFrom:
+            - configMapRef:
+                name: maintenance-config
+            - secretRef:
+                name: maintenance-secrets
+            image: docker.io/tinai/maintenance:v3
+            imagePullPolicy: Never
+            name: cert-renewal
+            resources:
+              limits:
+                cpu: 200m
+                memory: 128Mi
+              requests:
+                cpu: 50m
+                memory: 64Mi
+          restartPolicy: OnFailure
+          serviceAccount: maintenance
+          serviceAccountName: maintenance
+  schedule: 0 5 * * *
+  successfulJobsHistoryLimit: 3
+  suspend: false
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  annotations:
+  name: db-backup
+  namespace: maintenance
+spec:
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 3600
+      backoffLimit: 1
+      template:
+        spec:
+          containers:
+          - command:
+            - node
+            - db-backup/index.js
+            envFrom:
+            - configMapRef:
+                name: maintenance-config
+            - secretRef:
+                name: maintenance-secrets
+            image: docker.io/tinai/maintenance:v3
+            imagePullPolicy: Never
+            name: db-backup
+            resources:
+              limits:
+                cpu: 500m
+                memory: 256Mi
+              requests:
+                cpu: 100m
+                memory: 128Mi
+          restartPolicy: OnFailure
+          serviceAccount: maintenance
+          serviceAccountName: maintenance
+  schedule: 0 2 * * *
+  successfulJobsHistoryLimit: 3
+  suspend: false
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  annotations:
+  name: db-backup-verify
+  namespace: maintenance
+spec:
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 7200
+      backoffLimit: 0
+      template:
+        spec:
+          containers:
+          - command:
+            - node
+            - db-backup/verify.js
+            env:
+            - name: VERIFY_NAMESPACE
+              value: backup-verify
+            - name: VERIFY_POD_NAME
+              value: pg-restore-test
+            envFrom:
+            - configMapRef:
+                name: maintenance-config
+            - secretRef:
+                name: maintenance-secrets
+            image: docker.io/tinai/maintenance:v3
+            imagePullPolicy: Never
+            name: db-backup-verify
+            resources:
+              limits:
+                cpu: 500m
+                memory: 512Mi
+              requests:
+                cpu: 100m
+                memory: 128Mi
+          restartPolicy: Never
+          serviceAccount: maintenance
+          serviceAccountName: maintenance
+  schedule: 0 3 * * 0
+  successfulJobsHistoryLimit: 3
+  suspend: false
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  annotations:
+  name: image-updater
+  namespace: maintenance
+spec:
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          containers:
+          - command:
+            - node
+            - image-updater/index.js
+            envFrom:
+            - configMapRef:
+                name: maintenance-config
+            - secretRef:
+                name: maintenance-secrets
+            image: docker.io/tinai/maintenance:v3
+            imagePullPolicy: Never
+            name: image-updater
+            resources:
+              limits:
+                cpu: 200m
+                memory: 256Mi
+              requests:
+                cpu: 50m
+                memory: 128Mi
+          restartPolicy: OnFailure
+          serviceAccount: maintenance
+          serviceAccountName: maintenance
+  schedule: 0 4 * * *
+  successfulJobsHistoryLimit: 3
+  suspend: false
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  annotations:
+  name: log-rotation
+  namespace: maintenance
+spec:
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 7200
+      backoffLimit: 2
+      template:
+        spec:
+          containers:
+          - command:
+            - node
+            - log-rotation/index.js
+            envFrom:
+            - configMapRef:
+                name: maintenance-config
+            - secretRef:
+                name: maintenance-secrets
+            image: docker.io/tinai/maintenance:v3
+            imagePullPolicy: Never
+            name: log-rotation
+            resources:
+              limits:
+                cpu: 500m
+                memory: 512Mi
+              requests:
+                cpu: 100m
+                memory: 256Mi
+          restartPolicy: OnFailure
+          serviceAccount: maintenance
+          serviceAccountName: maintenance
+  schedule: 0 2 * * 0
+  successfulJobsHistoryLimit: 3
+  suspend: false
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  annotations:
+  name: secret-rotation
+  namespace: maintenance
+spec:
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          containers:
+          - command:
+            - node
+            - secret-rotation/index.js
+            envFrom:
+            - configMapRef:
+                name: maintenance-config
+            - secretRef:
+                name: maintenance-secrets
+            image: docker.io/tinai/maintenance:v3
+            imagePullPolicy: Never
+            name: secret-rotation
+            resources:
+              limits:
+                cpu: 200m
+                memory: 128Mi
+              requests:
+                cpu: 50m
+                memory: 64Mi
+          restartPolicy: Never
+          serviceAccount: maintenance
+          serviceAccountName: maintenance
+  schedule: 0 1 1 * *
+  successfulJobsHistoryLimit: 3
+  suspend: false
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  annotations:
+  name: storage-cleanup
+  namespace: maintenance
+spec:
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          containers:
+          - command:
+            - node
+            - storage-cleanup/index.js
+            envFrom:
+            - configMapRef:
+                name: maintenance-config
+            - secretRef:
+                name: maintenance-secrets
+            image: docker.io/tinai/maintenance:v3
+            imagePullPolicy: Never
+            name: storage-cleanup
+            resources:
+              limits:
+                cpu: 200m
+                memory: 128Mi
+              requests:
+                cpu: 50m
+                memory: 64Mi
+          restartPolicy: OnFailure
+          serviceAccount: maintenance
+          serviceAccountName: maintenance
+  schedule: 0 4 * * 0
+  successfulJobsHistoryLimit: 3
+  suspend: false
+---

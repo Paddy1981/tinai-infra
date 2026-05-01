@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: tinai-forge-version-check
+  namespace: tinai-forge
+spec:
+  schedule: "0 */6 * * *"  # Every 6 hours
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: tinai-forge
+          restartPolicy: Never
+          containers:
+            - name: version-checker
+              image: registry.e2enetworks.net/tinai/tinai-forge:latest
+              command: ["/app/forge-server", "--mode=check-only"]
+              env:
+                - name: FORGE_DB_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: tinai-forge-config
+                      key: FORGE_DB_URL
+                - name: FORGE_GITHUB_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: tinai-forge-config
+                      key: FORGE_GITHUB_TOKEN
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  cpu: 200m
+                  memory: 256Mi
+          imagePullSecrets:
+            - name: tinai-registry-credentials

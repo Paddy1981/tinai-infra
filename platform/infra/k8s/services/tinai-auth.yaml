@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tinai-auth
+  namespace: tinai-system
+  labels:
+    app: tinai-auth
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tinai-auth
+  template:
+    metadata:
+      labels:
+        app: tinai-auth
+    spec:
+      imagePullSecrets:
+        - name: e2e-registry-secret
+      containers:
+        - name: auth
+          image: registry.e2enetworks.net/tinai/auth:latest
+          ports:
+            - containerPort: 3002
+          envFrom:
+            - secretRef:
+                name: tinai-auth-secrets
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "3002"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tinai-auth
+  namespace: tinai-system
+spec:
+  selector:
+    app: tinai-auth
+  ports:
+    - port: 3002
+      targetPort: 3002

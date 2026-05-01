@@ -1,0 +1,198 @@
+---
+# Woodpecker CI Server
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: woodpecker-server
+  namespace: woodpecker
+  labels:
+    app: woodpecker-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: woodpecker-server
+  template:
+    metadata:
+      labels:
+        app: woodpecker-server
+    spec:
+      containers:
+        - name: server
+          image: woodpeckerci/woodpecker-server:v3.13.0
+          ports:
+            - containerPort: 8000   # HTTP UI
+            - containerPort: 9000   # gRPC (agent comms)
+          envFrom:
+            - secretRef:
+                name: woodpecker-secrets
+          env:
+            - name: WOODPECKER_OPEN
+              value: "false"
+            - name: WOODPECKER_HOST
+              value: "https://ci.tinai.cloud"
+            - name: WOODPECKER_GITEA
+              value: "true"
+            - name: WOODPECKER_GITEA_URL
+              value: "http://forgejo.tinai.cloud"
+            - name: WOODPECKER_DATABASE_DRIVER
+              value: "postgres"
+            - name: WOODPECKER_LIMIT_REPOS
+              value: "0"
+            - name: WOODPECKER_DEFAULT_PIPELINE_TIMEOUT
+              value: "60"
+            - name: WOODPECKER_PLUGINS_PRIVILEGED
+              value: "woodpeckerci/plugin-docker-buildx"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: woodpecker-server
+  namespace: woodpecker
+spec:
+  selector:
+    app: woodpecker-server
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+    - name: grpc
+      port: 9000
+      targetPort: 9000
+---
+# Woodpecker Agent
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: woodpecker-agent
+  namespace: woodpecker
+  labels:
+    app: woodpecker-agent
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: woodpecker-agent
+  template:
+    metadata:
+      labels:
+        app: woodpecker-agent
+    spec:
+      serviceAccountName: woodpecker-agent
+      volumes:
+        - name: agent-config
+          emptyDir: {}
+      containers:
+        - name: agent
+          image: woodpeckerci/woodpecker-agent:v3.13.0
+          volumeMounts:
+            - name: agent-config
+              mountPath: /etc/woodpecker
+          envFrom:
+            - secretRef:
+                name: woodpecker-secrets
+          env:
+            - name: WOODPECKER_SERVER
+              value: "woodpecker-server.woodpecker.svc.cluster.local:9000"
+            - name: WOODPECKER_MAX_WORKFLOWS
+              value: "4"
+            - name: WOODPECKER_BACKEND
+              value: "kubernetes"
+            - name: WOODPECKER_BACKEND_K8S_NAMESPACE
+              value: "tinai-build"
+            - name: WOODPECKER_BACKEND_K8S_STORAGE_CLASS
+              value: "local-path"
+            - name: WOODPECKER_BACKEND_K8S_STORAGE_RWX
+              value: "false"
+            - name: WOODPECKER_BACKEND_K8S_POD_IMAGE_PULL_SECRET
+              value: "e2e-registry-secret"
+            # Pipeline pods use woodpecker-pipeline SA so kubectl deploy steps
+            # work in-cluster without a kubeconfig file.
+            - name: WOODPECKER_BACKEND_K8S_SERVICE_ACCOUNT_NAME
+              value: "woodpecker-pipeline"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+---
+# ServiceAccount + RBAC for agent to spawn K8s pods in tinai-build
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: woodpecker-agent
+  namespace: woodpecker
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: woodpecker-agent
+  namespace: tinai-build
+rules:
+  - apiGroups: [""]
+    resources: [pods, pods/log, secrets, configmaps, persistentvolumeclaims]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: woodpecker-agent
+  namespace: tinai-build
+subjects:
+  - kind: ServiceAccount
+    name: woodpecker-agent
+    namespace: woodpecker
+roleRef:
+  kind: Role
+  apiGroup: rbac.authorization.k8s.io
+  name: woodpecker-agent
+---
+# Ingress for ci.tinai.cloud
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: woodpecker-ingress
+  namespace: woodpecker
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  tls:
+    - hosts:
+        - ci.tinai.cloud
+      secretName: woodpecker-tls
+  rules:
+    - host: ci.tinai.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: woodpecker-server
+                port:
+                  number: 8000

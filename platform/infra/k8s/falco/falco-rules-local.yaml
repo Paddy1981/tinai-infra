@@ -1,0 +1,52 @@
+# Tinai-specific Falco rules (override or augment upstream rules)
+#
+# Alert routing tiers (via Falco Sidekick):
+#   CRITICAL / ERROR  → Slack #tinai-security-alerts + PagerDuty page
+#   WARNING           → Slack #tinai-security-alerts only
+#   NOTICE / INFO     → logged only (no external notification)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: falco-rules-local
+  namespace: falco
+  labels:
+    tinai.cloud/managed-by: tinai-infra
+data:
+  falco_rules.local.yaml: |
+    # Alert when kubectl exec is used against a tenant pod
+    - rule: Exec into Tenant Pod
+      desc: Detect kubectl exec or equivalent into a tenant workload
+      condition: >
+        spawned_process and container and
+        (proc.name in (bash, sh, zsh, dash)) and
+        k8s.ns.name startswith "tinai-" and
+        not k8s.ns.name = "tinai-build"
+      output: >
+        Shell spawned in tenant pod (user=%user.name ns=%k8s.ns.name
+        pod=%k8s.pod.name container=%container.name cmd=%proc.cmdline)
+      priority: WARNING
+      tags: [tinai, tenant-isolation]
+
+    # Alert on outbound connections from function pods to unexpected destinations
+    - rule: Unexpected Function Egress
+      desc: Function pod making unexpected outbound connections
+      condition: >
+        outbound and container and
+        k8s.ns.name startswith "tinai-fn-" and
+        not fd.sport in (80, 443, 5432, 6379)
+      output: >
+        Unexpected egress from function pod (ns=%k8s.ns.name
+        pod=%k8s.pod.name dest=%fd.rip:%fd.rport)
+      priority: NOTICE
+      tags: [tinai, functions]
+
+    # Alert on write to /etc in any container
+    - rule: Write to /etc in Container
+      desc: Detect writes to /etc inside containers
+      condition: >
+        open_write and container and fd.name startswith /etc
+      output: >
+        Write to /etc in container (pod=%k8s.pod.name ns=%k8s.ns.name
+        file=%fd.name)
+      priority: ERROR
+      tags: [tinai, filesystem]

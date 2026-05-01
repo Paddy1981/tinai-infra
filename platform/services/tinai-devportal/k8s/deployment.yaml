@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tinai-devportal
+  namespace: tinai-system
+  labels:
+    app: tinai-devportal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tinai-devportal
+  template:
+    metadata:
+      labels:
+        app: tinai-devportal
+    spec:
+      imagePullSecrets:
+        - name: tinai-registry
+      containers:
+        - name: tinai-devportal
+          image: registry.tinai.cloud/tinai-admin/devportal:v1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3030
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "3030"
+            - name: HOSTNAME
+              value: "0.0.0.0"
+            - name: NODE_ENV
+              value: "production"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3

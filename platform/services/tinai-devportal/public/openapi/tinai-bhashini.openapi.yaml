@@ -1,0 +1,335 @@
+openapi: "3.1.0"
+info:
+  title: Tinai Bhashini API
+  version: "1.0.0"
+  description: |
+    Internal language intelligence layer for the Tinai platform.
+    Wraps BHASHINI (MeitY DLT) + fallback open-source models for 22 Indian languages.
+
+    **This API is internal** — it is NOT billed as a standalone product.
+    Language cost is folded into each service's per-call price (e.g. tinai-agri advisory
+    includes translation at no separate charge). This avoids competing with Sarvam AI
+    and Krutrim who have 4,000+ H100s dedicated to language AI.
+
+    External developers access language features via the `Accept-Language` header on
+    tinai-agri, tinai-edu, and tinai-exam APIs — they never call this directly.
+
+    Authentication: Internal service mesh only (mTLS). No external API keys.
+  contact:
+    name: Tinai Platform Team
+
+servers:
+  - url: http://tinai-bhashini.tinai-system.svc.cluster.local:3002
+    description: Internal cluster endpoint (mTLS required)
+
+tags:
+  - name: translate
+    description: Text translation between Indian languages
+  - name: transcribe
+    description: Speech-to-text (ASR) for Indian languages
+  - name: synthesize
+    description: Text-to-speech (TTS) for Indian languages
+  - name: detect
+    description: Language detection
+
+paths:
+  /v1/translate:
+    post:
+      operationId: translate
+      summary: Translate text between Indian languages
+      description: |
+        Translates text using BHASHINI NMT models (primary) with IndicTrans2
+        as local fallback if BHASHINI is unavailable (SLA: 99.5%).
+        Supports all 22 Scheduled languages + English.
+        Batch: up to 50 texts per call. Max 2000 chars per text.
+      tags: [translate]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [texts, source_language, target_language]
+              properties:
+                texts:
+                  type: array
+                  maxItems: 50
+                  items:
+                    type: string
+                    maxLength: 2000
+                source_language:
+                  type: string
+                  description: BCP-47 language code
+                  example: "en"
+                target_language:
+                  type: string
+                  example: "hi"
+                domain:
+                  type: string
+                  enum: [agriculture, health, education, legal, general]
+                  default: general
+                  description: Domain-specific model selection improves accuracy
+      responses:
+        "200":
+          description: Translation complete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  translations:
+                    type: array
+                    items:
+                      type: string
+                  source_language:
+                    type: string
+                  target_language:
+                    type: string
+                  model_used:
+                    type: string
+                    enum: [bhashini_nmt, indicatrans2_local]
+                  latency_ms:
+                    type: integer
+
+  /v1/transcribe:
+    post:
+      operationId: transcribe
+      summary: Automatic speech recognition (ASR)
+      description: |
+        Speech-to-text for Indian language audio.
+        Primary: BHASHINI Vakyansh/Whisper models for 11 languages.
+        Fallback: Whisper large-v3 with IndicWhisper fine-tune (local GPU).
+        Supported formats: OPUS, MP3, WAV, OGG (16kHz mono preferred).
+        Max audio: 60 seconds. For IVR keypress input, use /v1/transcribe/ivr.
+        2G mode: accepts 8kbps OPUS (Exotel IVR output format).
+      tags: [transcribe]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio, language]
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                language:
+                  type: string
+                  description: Expected language (required — improves accuracy 12-15%)
+                  example: "hi"
+                domain:
+                  type: string
+                  enum: [agriculture, health, education, general]
+                  default: general
+                punctuate:
+                  type: boolean
+                  default: true
+      responses:
+        "200":
+          description: Transcription complete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transcript:
+                    type: string
+                  confidence:
+                    type: number
+                    format: double
+                  language_detected:
+                    type: string
+                  words:
+                    type: array
+                    description: Word-level timestamps (optional)
+                    items:
+                      type: object
+                      properties:
+                        word:
+                          type: string
+                        start_s:
+                          type: number
+                        end_s:
+                          type: number
+                        confidence:
+                          type: number
+                  model_used:
+                    type: string
+                    enum: [bhashini_asr, indicwhisper_local]
+                  processing_ms:
+                    type: integer
+
+  /v1/synthesize:
+    post:
+      operationId: synthesize
+      summary: Text-to-speech synthesis
+      description: |
+        Converts text to speech audio for Indian languages.
+        Primary: BHASHINI TTS API (22 languages, multiple voices per language).
+        Fallback: Coqui TTS with IndicTTS models (local, no internet required).
+        2G mode output: 8kbps OPUS (60% smaller than MP3 at same quality).
+        Returns audio as base64 or as a pre-signed URL to SeaweedFS (for >30s audio).
+      tags: [synthesize]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text, language]
+              properties:
+                text:
+                  type: string
+                  maxLength: 3000
+                language:
+                  type: string
+                  example: "hi"
+                voice:
+                  type: string
+                  description: Voice ID from /v1/voices. Defaults to standard female voice.
+                speed:
+                  type: number
+                  format: double
+                  minimum: 0.5
+                  maximum: 2.0
+                  default: 1.0
+                format:
+                  type: string
+                  enum: [mp3, opus, wav]
+                  default: opus
+                  description: "opus recommended for 2G/IVR; mp3 for web players"
+                bitrate_kbps:
+                  type: integer
+                  enum: [8, 16, 32, 64, 128]
+                  default: 64
+      responses:
+        "200":
+          description: Audio synthesized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  audio_base64:
+                    type: string
+                    format: byte
+                    description: Present for audio < 500KB
+                  audio_url:
+                    type: string
+                    description: Present for audio >= 500KB (SeaweedFS pre-signed, 1h TTL)
+                  duration_seconds:
+                    type: number
+                  format:
+                    type: string
+                  model_used:
+                    type: string
+                    enum: [bhashini_tts, coqui_local]
+                  processing_ms:
+                    type: integer
+
+  /v1/detect:
+    post:
+      operationId: detectLanguage
+      summary: Detect language of text
+      description: |
+        Identifies the language of input text. Supports all 22 Indian languages + English.
+        Used internally to auto-select voice in VoiceFirstSession.
+      tags: [detect]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  minLength: 10
+                  maxLength: 1000
+      responses:
+        "200":
+          description: Language detected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  language:
+                    type: string
+                    description: BCP-47 code
+                  confidence:
+                    type: number
+                    format: double
+                  alternatives:
+                    type: array
+                    maxItems: 3
+                    items:
+                      type: object
+                      properties:
+                        language:
+                          type: string
+                        confidence:
+                          type: number
+
+  /v1/voices:
+    get:
+      operationId: listVoices
+      summary: List available TTS voices per language
+      tags: [synthesize]
+      parameters:
+        - name: language
+          in: query
+          schema:
+            type: string
+          description: Filter by language code
+      responses:
+        "200":
+          description: Voice list
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      voice_id:
+                        type: string
+                      name:
+                        type: string
+                      gender:
+                        type: string
+                        enum: [male, female, neutral]
+                      source:
+                        type: string
+                        enum: [bhashini, coqui_local]
+                      sample_url:
+                        type: string
+
+  /v1/health:
+    get:
+      operationId: health
+      summary: Service health + BHASHINI upstream status
+      tags: [translate]
+      security: []
+      responses:
+        "200":
+          description: Health status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy, degraded, unhealthy]
+                  bhashini_upstream:
+                    type: string
+                    enum: [available, unavailable, rate_limited]
+                  fallback_active:
+                    type: boolean
+                  languages_available:
+                    type: integer

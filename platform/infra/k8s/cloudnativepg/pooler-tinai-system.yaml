@@ -1,0 +1,23 @@
+# PgBouncer Pooler in front of tinai-db cluster
+# Tenants connect to this pooler, not directly to the primary pod.
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: tinai-db-pooler
+  namespace: tinai-system
+spec:
+  cluster:
+    name: tinai-db
+  type: rw             # read-write pooler (points to primary)
+  instances: 2         # 2 pooler replicas for HA
+
+  pgbouncer:
+    poolMode: transaction   # transaction pooling — best for serverless
+    parameters:
+      max_client_conn: "1000"
+      default_pool_size: "20"
+      reserve_pool_size: "5"
+      reserve_pool_timeout: "5"
+      server_idle_timeout: "600"
+      client_idle_timeout: "0"
+

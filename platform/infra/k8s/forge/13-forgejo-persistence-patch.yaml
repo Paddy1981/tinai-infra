@@ -1,0 +1,76 @@
+# Forgejo Config Persistence Fix
+# Problem: app.ini on emptyDir is lost on pod restart
+# Solution: Mount app.ini from a ConfigMap (for managed config)
+#           and use PVC for /data/gitea (for repos + LFS + attachments)
+#
+# Apply this patch to tenant Forgejo deployments:
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: forgejo-config-patch-instructions
+  namespace: tinai-forge
+data:
+  README: |
+    To fix Forgejo config persistence in tenant namespaces:
+
+    1. Create a ConfigMap with app.ini content in the tenant namespace:
+       kubectl create configmap forgejo-config -n <tenant-ns> \
+         --from-file=app.ini=/path/to/app.ini
+
+    2. Add to Forgejo deployment spec:
+       volumes:
+         - name: forgejo-config
+           configMap:
+             name: forgejo-config
+         - name: forgejo-data
+           persistentVolumeClaim:
+             claimName: forgejo-data-pvc
+       containers:
+         - name: forgejo
+           volumeMounts:
+             - name: forgejo-config
+               mountPath: /etc/gitea/app.ini
+               subPath: app.ini
+               readOnly: true
+             - name: forgejo-data
+               mountPath: /data/gitea
+
+    3. Create PVC in tenant namespace:
+       kubectl apply -f - <<EOF
+       apiVersion: v1
+       kind: PersistentVolumeClaim
+       metadata:
+         name: forgejo-data-pvc
+         namespace: <tenant-ns>
+       spec:
+         accessModes: [ReadWriteOnce]
+         resources:
+           requests:
+             storage: 10Gi
+       EOF
+
+  app-ini-template: |
+    [server]
+    DOMAIN           = %(FORGEJO_DOMAIN)s
+    ROOT_URL         = https://%(FORGEJO_DOMAIN)s/
+    HTTP_PORT        = 3000
+    ALLOWED_HOST_LIST = *.tinai.cloud,%(FORGEJO_DOMAIN)s
+
+    [database]
+    DB_TYPE  = postgres
+    HOST     = %(DB_HOST)s
+    NAME     = %(DB_NAME)s
+    USER     = %(DB_USER)s
+    PASSWD   = %(DB_PASS)s
+
+    [security]
+    INSTALL_LOCK = true
+    SECRET_KEY   = %(SECRET_KEY)s
+
+    [service]
+    DISABLE_REGISTRATION = false
+    REQUIRE_SIGNIN_VIEW  = false
+
+    [log]
+    MODE  = console
+    LEVEL = Info
