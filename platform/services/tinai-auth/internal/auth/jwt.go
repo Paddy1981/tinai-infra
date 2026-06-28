@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"math"
 	"time"
@@ -8,13 +10,44 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// Role constants for the 3-tier RBAC model.
+const (
+	RolePlatformAdmin = "platform_admin"
+	RoleTenantAdmin   = "tenant_admin"
+	RoleMember        = "member"
+)
+
+// ValidRoles lists all valid role values for validation.
+var ValidRoles = map[string]bool{
+	RolePlatformAdmin: true,
+	RoleTenantAdmin:   true,
+	RoleMember:        true,
+}
+
+// NormalizeRole maps legacy role names to the new 3-tier model.
+// "admin" -> "platform_admin", "tenant" -> "member".
+func NormalizeRole(role string) string {
+	switch role {
+	case "admin":
+		return RolePlatformAdmin
+	case "tenant":
+		return RoleMember
+	default:
+		if ValidRoles[role] {
+			return role
+		}
+		return RoleMember
+	}
+}
+
 // Claims holds the JWT payload fields issued by tinai-auth.
 // It embeds jwt.RegisteredClaims to handle standard fields (sub, exp, iat).
 type Claims struct {
-	Email    string `json:"email,omitempty"`
-	Mobile   string `json:"mobile,omitempty"`
-	Role     string `json:"role"`
-	TenantID string `json:"tenant_id"`
+	Email       string   `json:"email,omitempty"`
+	Mobile      string   `json:"mobile,omitempty"`
+	Role        string   `json:"role"`
+	TenantID    string   `json:"tenant_id"`
+	Permissions []string `json:"permissions,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -45,6 +78,13 @@ func Verify(tokenString, secret string) (*Claims, error) {
 	return nil, fmt.Errorf("invalid token")
 }
 
+// generateJTI creates a random 16-byte hex-encoded token ID for blacklisting.
+func generateJTI() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
 // NewClaims builds a Claims value stamped with the current time.
 func NewClaims(sub, email, role, tenantID string, expirySeconds int64) Claims {
 	now := time.Now()
@@ -53,6 +93,7 @@ func NewClaims(sub, email, role, tenantID string, expirySeconds int64) Claims {
 		Role:     role,
 		TenantID: tenantID,
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        generateJTI(),
 			Subject:   sub,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(expirySeconds) * time.Second)),
@@ -69,6 +110,7 @@ func NewMobileClaims(sub, mobile, role, tenantID string, expirySeconds int64) Cl
 		Role:     role,
 		TenantID: tenantID,
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        generateJTI(),
 			Subject:   sub,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(expirySeconds) * time.Second)),

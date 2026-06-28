@@ -13,6 +13,7 @@ type Config struct {
 	JWTSecret    string
 	JWTExpirySec int64
 	AppName      string
+	AppBaseURL   string
 	DevMode      bool
 
 	// SMTP settings
@@ -42,6 +43,7 @@ func Load() Config {
 		JWTSecret:    jwtSecret,
 		JWTExpirySec: 7 * 24 * 3600,
 		AppName:      getEnv("APP_NAME", "Tinai Cloud"),
+		AppBaseURL:   getEnv("APP_BASE_URL", "https://coll.tinai.cloud"),
 		DevMode:      getEnv("NODE_ENV", "production") == "development",
 
 		SMTPHost:     getEnv("SMTP_HOST", "stalwart.core.svc.cluster.local"),
