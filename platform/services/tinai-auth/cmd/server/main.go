@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,6 +21,7 @@ import (
 	"tinai.cloud/auth/internal/config"
 	"tinai.cloud/auth/internal/email"
 	"tinai.cloud/auth/internal/handlers"
+	"tinai.cloud/auth/internal/idp"
 	"tinai.cloud/auth/internal/oidc"
 	"tinai.cloud/auth/internal/ratelimit"
 	wahandler "tinai.cloud/auth/internal/webauthn"
@@ -130,6 +132,7 @@ func main() {
 		"/api/v1/auth/passkey/":            true, // WebAuthn / passkeys (all 4 routes)
 		"/api/v1/auth/invite":              true,
 		"/api/v1/auth/users/":              true, // Role change endpoint prefix
+		"/oidc/login/":                     true, // IdP login form POST (brute-force sensitive)
 	}
 
 	mux := http.NewServeMux()
@@ -190,6 +193,12 @@ func main() {
 		log.Fatalf("passkey handler init: %v", err)
 	}
 	passkeyHandler.Register(mux)
+
+	// OIDC provider (IdP) — mounted under /oidc/ only when OIDC_SIGNING_KEY is
+	// set. Absent ⇒ feature off, existing behaviour unchanged.
+	if _, err := idp.Mount(mux, db, cfg.JWTSecret, slog.Default()); err != nil {
+		log.Fatalf("idp mount: %v", err)
+	}
 
 	mux.Handle("GET /metrics", promhttp.Handler())
 
