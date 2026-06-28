@@ -55,6 +55,12 @@ const (
 // Mount wires the OIDC provider onto mux under /oidc/. It returns (false, nil)
 // when OIDC_SIGNING_KEY is unset — the caller leaves the service unchanged.
 func Mount(mux *http.ServeMux, db *sql.DB, jwtSecret string, logger *slog.Logger) (bool, error) {
+	return mountWith(mux, dbUsers{db}, jwtSecret, logger)
+}
+
+// mountWith is the testable core of Mount: it takes the userLookup directly so
+// the full OIDC flow can be exercised without a live Postgres.
+func mountWith(mux *http.ServeMux, users userLookup, jwtSecret string, logger *slog.Logger) (bool, error) {
 	keyPEM := os.Getenv("OIDC_SIGNING_KEY")
 	if keyPEM == "" {
 		logger.Info("idp: OIDC_SIGNING_KEY not set, OIDC provider disabled")
@@ -87,7 +93,7 @@ func Mount(mux *http.ServeMux, db *sql.DB, jwtSecret string, logger *slog.Logger
 	}
 
 	store := &storage{
-		db:           db,
+		users:        users,
 		clients:      clients,
 		authRequests: map[string]*authReq{},
 		codes:        map[string]string{},
@@ -187,10 +193,17 @@ type idpClient struct {
 
 var _ op.Client = (*idpClient)(nil)
 
-func (c *idpClient) GetID() string                       { return c.id }
-func (c *idpClient) RedirectURIs() []string              { return c.redirectURIs }
-func (c *idpClient) PostLogoutRedirectURIs() []string    { return nil }
-func (c *idpClient) ApplicationType() op.ApplicationType { return op.ApplicationTypeWeb }
+func (c *idpClient) GetID() string                    { return c.id }
+func (c *idpClient) RedirectURIs() []string           { return c.redirectURIs }
+func (c *idpClient) PostLogoutRedirectURIs() []string { return nil }
+func (c *idpClient) ApplicationType() op.ApplicationType {
+	// Secretless clients are native/PKCE apps (loopback-http redirects allowed);
+	// clients with a secret are confidential web apps (https redirects only).
+	if c.secret == "" {
+		return op.ApplicationTypeNative
+	}
+	return op.ApplicationTypeWeb
+}
 func (c *idpClient) AuthMethod() oidc.AuthMethod {
 	if c.secret == "" {
 		return oidc.AuthMethodNone // public client, PKCE only
@@ -278,8 +291,41 @@ type token struct {
 // Storage
 // ---------------------------------------------------------------------------
 
+// userLookup is the seam over the users table, so the OIDC flow (including the
+// signed-token path) is testable without a live Postgres.
+type userLookup interface {
+	byID(ctx context.Context, id string) (role, tenantID, email string, emailVerified bool, err error)
+	byEmail(ctx context.Context, email string) (id, passwordHash string, emailVerified bool, err error)
+	ping(ctx context.Context) error
+}
+
+// dbUsers implements userLookup against the existing users table.
+type dbUsers struct{ db *sql.DB }
+
+func (u dbUsers) byID(ctx context.Context, id string) (role, tenantID, email string, emailVerified bool, err error) {
+	var em sql.NullString
+	err = u.db.QueryRowContext(ctx,
+		`SELECT role, tenant_id, email, COALESCE(email_verified, true) FROM users WHERE id=$1`,
+		id,
+	).Scan(&role, &tenantID, &em, &emailVerified)
+	if err != nil {
+		return "", "", "", false, fmt.Errorf("user not found: %w", err)
+	}
+	return role, tenantID, em.String, emailVerified, nil
+}
+
+func (u dbUsers) byEmail(ctx context.Context, email string) (id, passwordHash string, emailVerified bool, err error) {
+	err = u.db.QueryRowContext(ctx,
+		`SELECT id, password_hash, COALESCE(email_verified, true) FROM users WHERE email=$1`,
+		email,
+	).Scan(&id, &passwordHash, &emailVerified)
+	return id, passwordHash, emailVerified, err
+}
+
+func (u dbUsers) ping(ctx context.Context) error { return u.db.PingContext(ctx) }
+
 type storage struct {
-	db         *sql.DB
+	users      userLookup
 	clients    map[string]*idpClient
 	signingKey signingKey
 
@@ -480,7 +526,7 @@ func (s *storage) SetIntrospectionFromToken(ctx context.Context, ir *oidc.Intros
 }
 
 func (s *storage) GetPrivateClaimsFromScopes(ctx context.Context, userID, clientID string, scopes []string) (map[string]any, error) {
-	role, tenantID, _, _, err := s.lookupUser(ctx, userID)
+	role, tenantID, _, _, err := s.users.byID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -501,12 +547,12 @@ func (s *storage) ValidateJWTProfileScopes(ctx context.Context, userID string, s
 	return allowed, nil
 }
 
-func (s *storage) Health(ctx context.Context) error { return s.db.PingContext(ctx) }
+func (s *storage) Health(ctx context.Context) error { return s.users.ping(ctx) }
 
 // setUserinfo fills the id_token / userinfo claims from the users table. role
 // and tenant_id are always included so downstream tinai apps get tenant context.
 func (s *storage) setUserinfo(ctx context.Context, ui *oidc.UserInfo, userID string, scopes []string) error {
-	role, tenantID, email, emailVerified, err := s.lookupUser(ctx, userID)
+	role, tenantID, email, emailVerified, err := s.users.byID(ctx, userID)
 	if err != nil {
 		return err
 	}
@@ -523,18 +569,6 @@ func (s *storage) setUserinfo(ctx context.Context, ui *oidc.UserInfo, userID str
 	ui.AppendClaims("role", role)
 	ui.AppendClaims("tenant_id", tenantID)
 	return nil
-}
-
-func (s *storage) lookupUser(ctx context.Context, userID string) (role, tenantID, email string, emailVerified bool, err error) {
-	var em sql.NullString
-	err = s.db.QueryRowContext(ctx,
-		`SELECT role, tenant_id, email, COALESCE(email_verified, true) FROM users WHERE id=$1`,
-		userID,
-	).Scan(&role, &tenantID, &em, &emailVerified)
-	if err != nil {
-		return "", "", "", false, fmt.Errorf("user not found: %w", err)
-	}
-	return role, tenantID, em.String, emailVerified, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -649,12 +683,7 @@ func (s *storage) checkLogin(ctx context.Context, email, password, reqID string)
 		return errors.New("auth request not found")
 	}
 
-	var userID, passwordHash string
-	var emailVerified bool
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id, password_hash, COALESCE(email_verified, true) FROM users WHERE email=$1`,
-		email,
-	).Scan(&userID, &passwordHash, &emailVerified)
+	userID, passwordHash, emailVerified, err := s.users.byEmail(ctx, email)
 	if err != nil {
 		return errors.New("invalid credentials")
 	}
