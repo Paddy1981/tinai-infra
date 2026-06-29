@@ -144,10 +144,12 @@ func (h *OIDCHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	).Scan(&userID, &role, &tenantID)
 
 	if err == sql.ErrNoRows {
-		// New SSO user — auto-provision with default tenant/role.
+		// New SSO user owns a dedicated tenant (full isolation), becoming its
+		// tenant_admin — mirrors the password-register path. The DB mints the
+		// tenant_id; no client value can place them into an existing tenant.
 		err = h.db.QueryRowContext(r.Context(),
 			`INSERT INTO users (email, password_hash, role, tenant_id, region)
-			 VALUES ($1, '', 'tenant', 'tinai-admin', 'IN')
+			 VALUES ($1, '', 'tenant_admin', gen_random_uuid()::text, 'IN')
 			 RETURNING id, role, tenant_id`,
 			idToken.Email,
 		).Scan(&userID, &role, &tenantID)

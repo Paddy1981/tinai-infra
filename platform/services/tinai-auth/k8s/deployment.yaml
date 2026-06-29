@@ -52,6 +52,22 @@ spec:
                   optional: true
             - name: MSG91_SENDER_ID
               value: "TINAI"
+            # OIDC provider (IdP). Mounts under /oidc/ only when OIDC_SIGNING_KEY
+            # is present; absent secret ⇒ feature off, no behaviour change.
+            - name: OIDC_ISSUER
+              value: "https://auth.tinai.cloud/oidc"
+            - name: OIDC_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: tinai-oidc-secrets
+                  key: signing-key
+                  optional: true
+            - name: OIDC_IDP_CLIENTS
+              valueFrom:
+                secretKeyRef:
+                  name: tinai-oidc-secrets
+                  key: clients
+                  optional: true
           livenessProbe:
             httpGet:
               path: /healthz

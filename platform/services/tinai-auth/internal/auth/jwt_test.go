@@ -11,7 +11,7 @@ func TestJWT(t *testing.T) {
 	secret := "test-secret-123"
 	sub := "user-123"
 	email := "test@example.com"
-	role := "admin"
+	role := RolePlatformAdmin
 	tenant := "tinai-test"
 	expiry := int64(3600)
 
@@ -50,6 +50,27 @@ func TestJWT(t *testing.T) {
 	_, err = Verify(token, "wrong-secret")
 	if err == nil {
 		t.Error("expected error for wrong secret, got nil")
+	}
+}
+
+func TestNormalizeRole(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"admin", RolePlatformAdmin},
+		{"tenant", RoleMember},
+		{"platform_admin", RolePlatformAdmin},
+		{"tenant_admin", RoleTenantAdmin},
+		{"member", RoleMember},
+		{"unknown", RoleMember},
+		{"", RoleMember},
+	}
+	for _, tt := range tests {
+		got := NormalizeRole(tt.input)
+		if got != tt.expected {
+			t.Errorf("NormalizeRole(%q) = %q, want %q", tt.input, got, tt.expected)
+		}
 	}
 }
 

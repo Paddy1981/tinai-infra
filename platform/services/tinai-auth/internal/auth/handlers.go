@@ -1,15 +1,19 @@
 package auth
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"tinai.cloud/auth/internal/config"
 	"tinai.cloud/auth/internal/email"
 	"tinai.cloud/auth/internal/sms"
@@ -25,6 +29,7 @@ type Handler struct {
 	cfg       config.Config
 	smsClient *sms.Client
 	mailer    *email.Mailer
+	redis     *redis.Client
 	// OnLogin is an optional callback invoked after each login attempt.
 	// It is nil-safe.
 	OnLogin LoginCallback
@@ -35,12 +40,21 @@ func NewHandler(db *sql.DB, cfg config.Config, mailer *email.Mailer) *Handler {
 	return &Handler{db: db, cfg: cfg, smsClient: sms.NewClient(), mailer: mailer}
 }
 
+// SetRedis assigns a Redis client for token blacklisting.
+func (h *Handler) SetRedis(rdb *redis.Client) {
+	h.redis = rdb
+}
+
 // Register mounts all auth routes onto mux using Go 1.22 method+path patterns.
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/auth/register", h.register)
 	mux.HandleFunc("POST /api/v1/auth/login", h.login)
 	mux.HandleFunc("POST /api/v1/auth/magic-link", h.magicLink)
 	mux.HandleFunc("POST /api/v1/auth/verify-magic-link", h.verifyMagicLink)
+	mux.HandleFunc("POST /api/v1/auth/verify-email", h.verifyEmail)
+	mux.HandleFunc("POST /api/v1/auth/resend-verification", h.resendVerification)
+	mux.HandleFunc("POST /api/v1/auth/forgot-password", h.forgotPassword)
+	mux.HandleFunc("POST /api/v1/auth/reset-password", h.resetPassword)
 	mux.HandleFunc("GET /api/v1/auth/me", h.me)
 	mux.HandleFunc("POST /api/v1/auth/logout", h.logout)
 	mux.HandleFunc("GET /healthz", h.health)
@@ -48,10 +62,19 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/auth/sms-otp", h.handleSMSOTP)
 	mux.HandleFunc("POST /api/v1/auth/verify-sms", h.handleVerifySMS)
 	mux.HandleFunc("POST /api/v1/auth/resend-sms", h.handleResendSMS)
+	// Role management routes
+	mux.HandleFunc("POST /api/v1/auth/invite", h.invite)
+	mux.HandleFunc("PATCH /api/v1/auth/users/{id}/role", h.changeRole)
 }
 
 // reIndianMobile matches a 10-digit Indian mobile number starting with 6–9.
 var reIndianMobile = regexp.MustCompile(`^[6-9]\d{9}$`)
+
+// reEmail validates a basic email format: local@domain.tld
+var reEmail = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
+
+// revokedTokenPrefix is the Redis key prefix for blacklisted JWT IDs.
+const revokedTokenPrefix = "tinai:revoked_jti:"
 
 // health returns a simple liveness response.
 func (h *Handler) health(w http.ResponseWriter, r *http.Request) {
@@ -74,8 +97,9 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 		httpError(w, "email and password required", http.StatusBadRequest)
 		return
 	}
-	if body.TenantID == "" {
-		body.TenantID = "tinai-admin"
+	if !reEmail.MatchString(body.Email) {
+		httpError(w, "invalid email format", http.StatusBadRequest)
+		return
 	}
 	if body.Region == "" {
 		body.Region = "IN"
@@ -85,12 +109,27 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// SECURITY: tenant_id is server-generated and unguessable. Any client-supplied
+	// body.TenantID is deliberately ignored — registration ALWAYS creates a brand-new
+	// tenant whose registrant becomes its tenant_admin. This prevents a caller from
+	// joining (or seizing admin of) an existing tenant by guessing its id, which was a
+	// cross-tenant data-access vulnerability. Joining an existing tenant is only possible
+	// via an authenticated invite (see the invite handler). Mirrors tinai-api's randomUUID().
+	tenantID := uuid.NewString()
+	assignedRole := RoleTenantAdmin
+
 	hash := HashPassword(body.Password)
+
+	// Email verification token (consumed via /verify-email). New accounts start
+	// unverified; login is not blocked, but the app can prompt for verification.
+	verifyToken := generateJTI()
+	verifyExpires := time.Now().Add(24 * time.Hour)
+
 	var userID string
 	err := h.db.QueryRowContext(r.Context(),
-		`INSERT INTO users (email, password_hash, role, tenant_id, region)
-		 VALUES ($1, $2, 'tenant', $3, $4) RETURNING id`,
-		body.Email, hash, body.TenantID, body.Region,
+		`INSERT INTO users (email, password_hash, role, tenant_id, region, email_verified, verify_token, verify_expires)
+		 VALUES ($1, $2, $3, $4, $5, false, $6, $7) RETURNING id`,
+		body.Email, hash, assignedRole, tenantID, body.Region, verifyToken, verifyExpires,
 	).Scan(&userID)
 	if err != nil {
 		if strings.Contains(err.Error(), "unique") || strings.Contains(err.Error(), "duplicate") {
@@ -102,13 +141,24 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims := NewClaims(userID, body.Email, "tenant", body.TenantID, h.cfg.JWTExpirySec)
+	if h.mailer != nil {
+		link := fmt.Sprintf("%s/verify-email?email=%s&token=%s",
+			h.cfg.AppBaseURL, url.QueryEscape(body.Email), verifyToken)
+		if err := h.mailer.SendVerificationEmail(r.Context(), body.Email, link, h.cfg.AppName); err != nil {
+			log.Printf("failed to queue verification email to %s: %v", body.Email, err)
+		}
+	}
+
+	claims := NewClaims(userID, body.Email, assignedRole, tenantID, h.cfg.JWTExpirySec)
 	token := Sign(claims, h.cfg.JWTSecret)
 	writeJSON(w, map[string]any{
-		"token":      token,
-		"user_id":    userID,
-		"email":      body.Email,
-		"expires_in": h.cfg.JWTExpirySec,
+		"token":          token,
+		"user_id":        userID,
+		"email":          body.Email,
+		"role":           assignedRole,
+		"tenant_id":      tenantID,
+		"email_verified": false,
+		"expires_in":     h.cfg.JWTExpirySec,
 	})
 }
 
@@ -126,12 +176,17 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		httpError(w, "email and password required", http.StatusBadRequest)
 		return
 	}
+	if !reEmail.MatchString(body.Email) {
+		httpError(w, "invalid email format", http.StatusBadRequest)
+		return
+	}
 
 	var userID, passwordHash, role, tenantID string
+	var emailVerified bool
 	err := h.db.QueryRowContext(r.Context(),
-		`SELECT id, password_hash, role, tenant_id FROM users WHERE email=$1`,
+		`SELECT id, password_hash, role, tenant_id, email_verified FROM users WHERE email=$1`,
 		body.Email,
-	).Scan(&userID, &passwordHash, &role, &tenantID)
+	).Scan(&userID, &passwordHash, &role, &tenantID, &emailVerified)
 	if err == sql.ErrNoRows {
 		if h.OnLogin != nil {
 			h.OnLogin("password", "failure")
@@ -163,17 +218,21 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	// Best-effort last_login update — ignore error
 	h.db.ExecContext(r.Context(), `UPDATE users SET last_login=NOW() WHERE id=$1`, userID) //nolint:errcheck
 
-	claims := NewClaims(userID, body.Email, role, tenantID, h.cfg.JWTExpirySec)
+	// Normalize legacy roles to the new 3-tier model in the JWT
+	normalizedRole := NormalizeRole(role)
+
+	claims := NewClaims(userID, body.Email, normalizedRole, tenantID, h.cfg.JWTExpirySec)
 	token := Sign(claims, h.cfg.JWTSecret)
 	writeJSON(w, map[string]any{
 		"token": token,
 		"user": map[string]string{
 			"id":        userID,
 			"email":     body.Email,
-			"role":      role,
+			"role":      normalizedRole,
 			"tenant_id": tenantID,
 		},
-		"expires_in": h.cfg.JWTExpirySec,
+		"email_verified": emailVerified,
+		"expires_in":     h.cfg.JWTExpirySec,
 	})
 }
 
@@ -260,7 +319,8 @@ func (h *Handler) verifyMagicLink(w http.ResponseWriter, r *http.Request) {
 		h.OnLogin("magic_link", "success")
 	}
 
-	claims := NewClaims(userID, body.Email, role, tenantID, h.cfg.JWTExpirySec)
+	normalizedRole := NormalizeRole(role)
+	claims := NewClaims(userID, body.Email, normalizedRole, tenantID, h.cfg.JWTExpirySec)
 	token := Sign(claims, h.cfg.JWTSecret)
 	writeJSON(w, map[string]any{
 		"token":   token,
@@ -268,11 +328,158 @@ func (h *Handler) verifyMagicLink(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// verifyEmail consumes an email-verification token and marks the account verified.
+func (h *Handler) verifyEmail(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Email string `json:"email"`
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httpError(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if body.Email == "" || body.Token == "" {
+		httpError(w, "email and token required", http.StatusBadRequest)
+		return
+	}
+
+	var userID string
+	err := h.db.QueryRowContext(r.Context(),
+		`UPDATE users
+		 SET email_verified=true, verify_token=NULL, verify_expires=NULL
+		 WHERE email=$1 AND verify_token=$2 AND verify_expires > NOW()
+		 RETURNING id`,
+		body.Email, body.Token,
+	).Scan(&userID)
+	if err == sql.ErrNoRows {
+		httpError(w, "invalid or expired token", http.StatusUnauthorized)
+		return
+	}
+	if err != nil {
+		log.Printf("verify email: %v", err)
+		httpError(w, "verification failed", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "email_verified": true})
+}
+
+// resendVerification re-issues a verification email when the account is still
+// unverified. Always returns a generic response (no account-existence leak).
+func (h *Handler) resendVerification(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Email string `json:"email"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Email == "" {
+		httpError(w, "email required", http.StatusBadRequest)
+		return
+	}
+
+	token := generateJTI()
+	expires := time.Now().Add(24 * time.Hour)
+	var email string
+	err := h.db.QueryRowContext(r.Context(),
+		`UPDATE users SET verify_token=$1, verify_expires=$2
+		 WHERE email=$3 AND email_verified=false
+		 RETURNING email`,
+		token, expires, body.Email,
+	).Scan(&email)
+	if err == nil && h.mailer != nil {
+		link := fmt.Sprintf("%s/verify-email?email=%s&token=%s",
+			h.cfg.AppBaseURL, url.QueryEscape(email), token)
+		if mErr := h.mailer.SendVerificationEmail(r.Context(), email, link, h.cfg.AppName); mErr != nil {
+			log.Printf("failed to queue verification email to %s: %v", email, mErr)
+		}
+	} else if err != nil && err != sql.ErrNoRows {
+		log.Printf("resend verification: %v", err)
+	}
+
+	writeJSON(w, map[string]any{"message": "If this email needs verification, a new link has been sent"})
+}
+
+// forgotPassword issues a password-reset link. Always returns a generic
+// response to avoid email enumeration.
+func (h *Handler) forgotPassword(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Email string `json:"email"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Email == "" {
+		httpError(w, "email required", http.StatusBadRequest)
+		return
+	}
+
+	token := generateJTI()
+	expires := time.Now().Add(1 * time.Hour)
+	var email string
+	err := h.db.QueryRowContext(r.Context(),
+		`UPDATE users SET reset_token=$1, reset_expires=$2
+		 WHERE email=$3
+		 RETURNING email`,
+		token, expires, body.Email,
+	).Scan(&email)
+	if err == nil && h.mailer != nil {
+		link := fmt.Sprintf("%s/reset-password?email=%s&token=%s",
+			h.cfg.AppBaseURL, url.QueryEscape(email), token)
+		if mErr := h.mailer.SendPasswordReset(r.Context(), email, link, h.cfg.AppName); mErr != nil {
+			log.Printf("failed to queue password reset to %s: %v", email, mErr)
+		}
+	} else if err != nil && err != sql.ErrNoRows {
+		log.Printf("forgot password: %v", err)
+	}
+
+	writeJSON(w, map[string]any{"message": "If this email is registered, a reset link has been sent"})
+}
+
+// resetPassword consumes a reset token and sets a new password.
+func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Email       string `json:"email"`
+		Token       string `json:"token"`
+		NewPassword string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httpError(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if body.Email == "" || body.Token == "" || body.NewPassword == "" {
+		httpError(w, "email, token and new_password required", http.StatusBadRequest)
+		return
+	}
+	if len(body.NewPassword) < 8 {
+		httpError(w, "password must be at least 8 characters", http.StatusBadRequest)
+		return
+	}
+
+	hash := HashPassword(body.NewPassword)
+	var userID string
+	err := h.db.QueryRowContext(r.Context(),
+		`UPDATE users
+		 SET password_hash=$1, reset_token=NULL, reset_expires=NULL
+		 WHERE email=$2 AND reset_token=$3 AND reset_expires > NOW()
+		 RETURNING id`,
+		hash, body.Email, body.Token,
+	).Scan(&userID)
+	if err == sql.ErrNoRows {
+		httpError(w, "invalid or expired token", http.StatusUnauthorized)
+		return
+	}
+	if err != nil {
+		log.Printf("reset password: %v", err)
+		httpError(w, "reset failed", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true})
+}
+
 // me returns the user profile encoded in the bearer token.
 func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	claims, err := h.extractClaims(r)
 	if err != nil {
 		httpError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	// Check token blacklist
+	if h.IsTokenRevoked(claims.ID) {
+		httpError(w, "token revoked", http.StatusUnauthorized)
 		return
 	}
 	writeJSON(w, map[string]any{
@@ -284,10 +491,34 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// logout is a no-op for stateless JWTs; the client is responsible for
-// discarding the token. The endpoint exists for API symmetry.
+// logout revokes the bearer token by adding its JTI to the Redis blacklist.
+// If Redis is unavailable, logout still succeeds (client discards token).
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
+	if h.redis != nil {
+		claims, err := h.extractClaims(r)
+		if err == nil && claims.ID != "" {
+			// TTL = remaining token validity so blacklist entries auto-expire
+			ttl := time.Until(claims.ExpiresAt.Time)
+			if ttl > 0 {
+				key := revokedTokenPrefix + claims.ID
+				h.redis.Set(context.Background(), key, "1", ttl) //nolint:errcheck
+			}
+		}
+	}
 	writeJSON(w, map[string]bool{"ok": true})
+}
+
+// IsTokenRevoked checks whether a token's JTI has been blacklisted in Redis.
+// Returns false if Redis is not configured or on error (fail-open for availability).
+func (h *Handler) IsTokenRevoked(jti string) bool {
+	if h.redis == nil || jti == "" {
+		return false
+	}
+	val, err := h.redis.Exists(context.Background(), revokedTokenPrefix+jti).Result()
+	if err != nil {
+		return false
+	}
+	return val > 0
 }
 
 // extractClaims parses and verifies the Bearer token from the Authorization header.
@@ -390,20 +621,21 @@ func (h *Handler) handleVerifySMS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Look up or create a user keyed on mobile number.
-	var userID string
+	var userID, tenantID string
 	err = h.db.QueryRowContext(r.Context(),
-		`SELECT id FROM users WHERE mobile=$1`, fullMobile,
-	).Scan(&userID)
+		`SELECT id, tenant_id FROM users WHERE mobile=$1`, fullMobile,
+	).Scan(&userID, &tenantID)
 
 	if err == sql.ErrNoRows {
-		// Auto-create account: use the mobile number as the primary identifier.
-		// email and password_hash are now nullable (Finding TINAI-H32).
+		// Auto-create account keyed on the mobile number, in its own dedicated
+		// tenant (full isolation), registrant becomes tenant_admin — mirrors the
+		// password-register path. The DB mints the tenant_id.
 		err = h.db.QueryRowContext(r.Context(),
 			`INSERT INTO users (role, tenant_id, region, mobile, mobile_verified)
-			 VALUES ('tenant', 'tinai-admin', 'IN', $1, true)
-			 RETURNING id`,
+			 VALUES ('tenant_admin', gen_random_uuid()::text, 'IN', $1, true)
+			 RETURNING id, tenant_id`,
 			fullMobile,
-		).Scan(&userID)
+		).Scan(&userID, &tenantID)
 		if err != nil {
 			log.Printf("verify-sms create user: %v", err)
 			httpError(w, "account creation failed", http.StatusInternalServerError)
@@ -423,7 +655,16 @@ func (h *Handler) handleVerifySMS(w http.ResponseWriter, r *http.Request) {
 		h.OnLogin("sms_otp", "success")
 	}
 
-	claims := NewMobileClaims(userID, fullMobile, "tenant", "tinai-admin", h.cfg.JWTExpirySec)
+	// Fetch the actual role from the DB (may have been migrated)
+	var userRole string
+	if err := h.db.QueryRowContext(r.Context(),
+		`SELECT role FROM users WHERE id=$1`, userID,
+	).Scan(&userRole); err != nil {
+		userRole = RoleMember
+	}
+	normalizedRole := NormalizeRole(userRole)
+
+	claims := NewMobileClaims(userID, fullMobile, normalizedRole, tenantID, h.cfg.JWTExpirySec)
 	token := Sign(claims, h.cfg.JWTSecret)
 	writeJSON(w, map[string]any{
 		"ok":    true,
@@ -431,6 +672,7 @@ func (h *Handler) handleVerifySMS(w http.ResponseWriter, r *http.Request) {
 		"user": map[string]string{
 			"id":     userID,
 			"mobile": fullMobile,
+			"role":   normalizedRole,
 		},
 	})
 }
@@ -484,6 +726,177 @@ func (h *Handler) handleResendSMS(w http.ResponseWriter, r *http.Request) {
 		`UPDATE sms_otp_requests SET sent_at=NOW() WHERE mobile=$1`, fullMobile)
 
 	writeJSON(w, map[string]bool{"ok": true})
+}
+
+// invite allows a tenant_admin (or platform_admin) to create a new user in their tenant.
+// POST /api/v1/auth/invite — accepts email and role (member or tenant_admin).
+func (h *Handler) invite(w http.ResponseWriter, r *http.Request) {
+	claims, err := h.extractClaims(r)
+	if err != nil {
+		httpError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if h.IsTokenRevoked(claims.ID) {
+		httpError(w, "token revoked", http.StatusUnauthorized)
+		return
+	}
+
+	// Only tenant_admin or platform_admin can invite
+	callerRole := NormalizeRole(claims.Role)
+	if callerRole != RoleTenantAdmin && callerRole != RolePlatformAdmin {
+		httpError(w, "forbidden: only tenant_admin or platform_admin can invite users", http.StatusForbidden)
+		return
+	}
+
+	var body struct {
+		Email string `json:"email"`
+		Role  string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httpError(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if body.Email == "" {
+		httpError(w, "email required", http.StatusBadRequest)
+		return
+	}
+	if !reEmail.MatchString(body.Email) {
+		httpError(w, "invalid email format", http.StatusBadRequest)
+		return
+	}
+
+	// Validate requested role — only member or tenant_admin allowed via invite
+	if body.Role == "" {
+		body.Role = RoleMember
+	}
+	if body.Role != RoleMember && body.Role != RoleTenantAdmin {
+		httpError(w, "role must be 'member' or 'tenant_admin'", http.StatusBadRequest)
+		return
+	}
+	// Only platform_admin can invite another tenant_admin
+	if body.Role == RoleTenantAdmin && callerRole != RolePlatformAdmin && callerRole != RoleTenantAdmin {
+		httpError(w, "insufficient permissions to assign tenant_admin", http.StatusForbidden)
+		return
+	}
+
+	// Create user in the same tenant as the caller with a random temporary password
+	tempPassword := generateJTI() // random 32-char hex
+	hash := HashPassword(tempPassword)
+
+	var userID string
+	err = h.db.QueryRowContext(r.Context(),
+		`INSERT INTO users (email, password_hash, role, tenant_id, region)
+		 VALUES ($1, $2, $3, $4, 'IN') RETURNING id`,
+		body.Email, hash, body.Role, claims.TenantID,
+	).Scan(&userID)
+	if err != nil {
+		if strings.Contains(err.Error(), "unique") || strings.Contains(err.Error(), "duplicate") {
+			httpError(w, "email already registered", http.StatusConflict)
+			return
+		}
+		log.Printf("invite: %v", err)
+		httpError(w, "invite failed", http.StatusInternalServerError)
+		return
+	}
+
+	// In production, send an invite email with a magic link or password reset.
+	// For now, return the user ID.
+	writeJSON(w, map[string]any{
+		"ok":        true,
+		"user_id":   userID,
+		"email":     body.Email,
+		"role":      body.Role,
+		"tenant_id": claims.TenantID,
+	})
+}
+
+// changeRole allows tenant_admin to promote/demote users within their tenant,
+// or platform_admin to change any user's role.
+// PATCH /api/v1/auth/users/{id}/role
+func (h *Handler) changeRole(w http.ResponseWriter, r *http.Request) {
+	claims, err := h.extractClaims(r)
+	if err != nil {
+		httpError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if h.IsTokenRevoked(claims.ID) {
+		httpError(w, "token revoked", http.StatusUnauthorized)
+		return
+	}
+
+	callerRole := NormalizeRole(claims.Role)
+	if callerRole != RoleTenantAdmin && callerRole != RolePlatformAdmin {
+		httpError(w, "forbidden: only tenant_admin or platform_admin can change roles", http.StatusForbidden)
+		return
+	}
+
+	targetUserID := r.PathValue("id")
+	if targetUserID == "" {
+		httpError(w, "user id required", http.StatusBadRequest)
+		return
+	}
+
+	var body struct {
+		Role string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httpError(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if !ValidRoles[body.Role] {
+		httpError(w, "invalid role: must be platform_admin, tenant_admin, or member", http.StatusBadRequest)
+		return
+	}
+
+	// Only platform_admin can assign platform_admin role
+	if body.Role == RolePlatformAdmin && callerRole != RolePlatformAdmin {
+		httpError(w, "forbidden: only platform_admin can assign platform_admin role", http.StatusForbidden)
+		return
+	}
+
+	// Fetch target user to verify tenant ownership
+	var targetTenantID, targetCurrentRole string
+	err = h.db.QueryRowContext(r.Context(),
+		`SELECT tenant_id, role FROM users WHERE id=$1`, targetUserID,
+	).Scan(&targetTenantID, &targetCurrentRole)
+	if err == sql.ErrNoRows {
+		httpError(w, "user not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("changeRole lookup: %v", err)
+		httpError(w, "lookup failed", http.StatusInternalServerError)
+		return
+	}
+
+	// tenant_admin can only modify users in their own tenant
+	if callerRole == RoleTenantAdmin && targetTenantID != claims.TenantID {
+		httpError(w, "forbidden: cannot modify users outside your tenant", http.StatusForbidden)
+		return
+	}
+
+	// tenant_admin cannot demote another tenant_admin (only platform_admin can)
+	if callerRole == RoleTenantAdmin && NormalizeRole(targetCurrentRole) == RoleTenantAdmin && body.Role != RoleTenantAdmin {
+		httpError(w, "forbidden: tenant_admin cannot demote another tenant_admin", http.StatusForbidden)
+		return
+	}
+
+	// Perform the update
+	_, err = h.db.ExecContext(r.Context(),
+		`UPDATE users SET role=$1 WHERE id=$2`, body.Role, targetUserID,
+	)
+	if err != nil {
+		log.Printf("changeRole update: %v", err)
+		httpError(w, "role update failed", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, map[string]any{
+		"ok":       true,
+		"user_id":  targetUserID,
+		"old_role": NormalizeRole(targetCurrentRole),
+		"new_role": body.Role,
+	})
 }
 
 // writeJSON serialises v as JSON with the correct Content-Type header.

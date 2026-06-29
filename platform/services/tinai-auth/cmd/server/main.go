@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,6 +21,7 @@ import (
 	"tinai.cloud/auth/internal/config"
 	"tinai.cloud/auth/internal/email"
 	"tinai.cloud/auth/internal/handlers"
+	"tinai.cloud/auth/internal/idp"
 	"tinai.cloud/auth/internal/oidc"
 	"tinai.cloud/auth/internal/ratelimit"
 	wahandler "tinai.cloud/auth/internal/webauthn"
@@ -59,7 +61,7 @@ func main() {
 		password_hash   TEXT,
 		mobile          VARCHAR(15) UNIQUE,
 		mobile_verified BOOLEAN     NOT NULL DEFAULT false,
-		role            VARCHAR(20) NOT NULL DEFAULT 'tenant',
+		role            VARCHAR(20) NOT NULL DEFAULT 'member',
 		tenant_id       VARCHAR(63) NOT NULL DEFAULT 'tinai-admin',
 		region          VARCHAR(5)  NOT NULL DEFAULT 'IN',
 		magic_token     TEXT,
@@ -69,6 +71,31 @@ func main() {
 	)`); err != nil {
 		log.Fatalf("create users table: %v", err)
 	}
+
+	// Email verification + password reset columns (idempotent). email_verified
+	// defaults true so pre-existing accounts are grandfathered as verified; new
+	// registrations explicitly insert false and receive a verification email.
+	for _, stmt := range []string{
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT true`,
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS verify_token TEXT`,
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS verify_expires TIMESTAMPTZ`,
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token TEXT`,
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_expires TIMESTAMPTZ`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			log.Fatalf("migrate users columns: %v", err)
+		}
+	}
+
+	// Migrate legacy roles to the new 3-tier model:
+	// "admin" -> "platform_admin", "tenant" -> "member"
+	if _, err := db.Exec(`UPDATE users SET role='platform_admin' WHERE role='admin'`); err != nil {
+		log.Printf("warn: role migration admin->platform_admin: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE users SET role='member' WHERE role='tenant'`); err != nil {
+		log.Printf("warn: role migration tenant->member: %v", err)
+	}
+	log.Printf("role migration complete (admin->platform_admin, tenant->member)")
 
 	// Periodically refresh the activeTokens gauge from the user count.
 	go func() {
@@ -85,20 +112,27 @@ func main() {
 	// Rate limiters:
 	//   authLimiter  — 5 requests/minute (burst=5) for sensitive auth endpoints
 	//   globalLimiter — 60 requests/minute (burst=60) for all other endpoints
-	authLimiter   := ratelimit.New(5.0/60.0, 5)
+	authLimiter := ratelimit.New(5.0/60.0, 5)
 	globalLimiter := ratelimit.New(1.0, 60)
 	go authLimiter.Cleanup()
 	go globalLimiter.Cleanup()
 
 	// Auth-sensitive paths that get the stricter rate limit.
 	authPaths := map[string]bool{
-		"/api/v1/auth/login":          true,
-		"/api/v1/auth/register":       true,
-		"/api/v1/auth/magic-link":     true,
-		"/api/v1/auth/sms-otp":        true,
-		"/api/v1/auth/verify-sms":     true,
-		"/api/v1/auth/sso/":           true, // SSO redirect + callback prefix
-		"/api/v1/auth/passkey/":       true, // WebAuthn / passkeys (all 4 routes)
+		"/api/v1/auth/login":               true,
+		"/api/v1/auth/register":            true,
+		"/api/v1/auth/magic-link":          true,
+		"/api/v1/auth/verify-email":        true,
+		"/api/v1/auth/resend-verification": true,
+		"/api/v1/auth/forgot-password":     true,
+		"/api/v1/auth/reset-password":      true,
+		"/api/v1/auth/sms-otp":             true,
+		"/api/v1/auth/verify-sms":          true,
+		"/api/v1/auth/sso/":                true, // SSO redirect + callback prefix
+		"/api/v1/auth/passkey/":            true, // WebAuthn / passkeys (all 4 routes)
+		"/api/v1/auth/invite":              true,
+		"/api/v1/auth/users/":              true, // Role change endpoint prefix
+		"/oidc/login/":                     true, // IdP login form POST (brute-force sensitive)
 	}
 
 	mux := http.NewServeMux()
@@ -140,6 +174,9 @@ func main() {
 
 	authHandler := auth.NewHandler(db, cfg, mailer)
 	authHandler.OnLogin = onLogin
+	if rdb != nil {
+		authHandler.SetRedis(rdb)
+	}
 	authHandler.Register(mux)
 
 	// OIDC / SSO — providers are loaded from env; unconfigured providers are
@@ -156,6 +193,12 @@ func main() {
 		log.Fatalf("passkey handler init: %v", err)
 	}
 	passkeyHandler.Register(mux)
+
+	// OIDC provider (IdP) — mounted under /oidc/ only when OIDC_SIGNING_KEY is
+	// set. Absent ⇒ feature off, existing behaviour unchanged.
+	if _, err := idp.Mount(mux, db, cfg.JWTSecret, slog.Default()); err != nil {
+		log.Fatalf("idp mount: %v", err)
+	}
 
 	mux.Handle("GET /metrics", promhttp.Handler())
 

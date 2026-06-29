@@ -136,3 +136,17 @@ func (m *Mailer) SendMagicLink(ctx context.Context, to, otp, appName string) err
 	body := fmt.Sprintf("Hello,\n\nYour magic link code is: %s\n\nThis code will expire in 15 minutes. If you did not request this, please ignore this email.\n\nThanks,\nThe %s Team", otp, appName)
 	return m.Queue(ctx, to, subject, body)
 }
+
+// SendVerificationEmail queues an email-verification link to the user.
+func (m *Mailer) SendVerificationEmail(ctx context.Context, to, link, appName string) error {
+	subject := fmt.Sprintf("%s — Verify your email", appName)
+	body := fmt.Sprintf("Hello,\n\nPlease confirm your email address by opening the link below:\n\n%s\n\nThis link expires in 24 hours. If you did not create an account, you can ignore this email.\n\nThanks,\nThe %s Team", link, appName)
+	return m.Queue(ctx, to, subject, body)
+}
+
+// SendPasswordReset queues a password-reset link to the user.
+func (m *Mailer) SendPasswordReset(ctx context.Context, to, link, appName string) error {
+	subject := fmt.Sprintf("%s — Reset your password", appName)
+	body := fmt.Sprintf("Hello,\n\nWe received a request to reset your password. Open the link below to choose a new one:\n\n%s\n\nThis link expires in 1 hour. If you did not request this, you can safely ignore this email and your password will stay the same.\n\nThanks,\nThe %s Team", link, appName)
+	return m.Queue(ctx, to, subject, body)
+}
